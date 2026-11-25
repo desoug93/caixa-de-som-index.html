@@ -1,0 +1,2417 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Caixa de Som</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=Orbitron:wght@700&display=swap">
+<style>
+/* Layout: palco com a caixa em corte lateral (frente voltada para a direita), controles logo abaixo. */
+:root {
+  color-scheme: dark;
+  --bg: #11161d;
+  --panel: #19202a;
+  --panel-2: #212a36;
+  --line: #2c3745;
+  --fg: #e8ecf1;
+  --muted: #9aa5b4;
+  --accent: #6fd6c4;
+  --accent-ink: #0a1c19;
+
+  --c-stage: #141a22;
+  --c-floor: #0f141a;
+  --c-body: #ebe9e3;
+  --c-body-side: #c2bfb7;
+  --c-body-top: #f6f5f1;
+  --c-frame: #15191f;
+  --c-surround: #1a1d22;
+  --c-silver: #d8dce1;
+  --c-cone-a: #363a41;
+  --c-cone-b: #0a0c0f;
+  --c-interior: #0c1015;
+  --c-foam: #1d252e;
+  --c-foam-line: #2a3541;
+  --c-metal: #7a8493;
+  --c-metal-dark: #4a5260;
+  --c-magnet: #272c35;
+  --c-cone: #d9d3c3;
+  --c-cone-edge: #9d9480;
+  --c-copper: #d07b3f;
+  --c-rubber: #8c8272;
+  --c-dome: #e7ddc9;
+  --c-accent: #6fd6c4;
+  --c-muted: #9aa5b4;
+
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 24px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.6rem, 4vw, 2.2rem); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+
+.stage {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--c-stage);
+  transition: border-color .15s, box-shadow .15s;
+}
+.stage.over { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(111, 214, 196, .25); }
+canvas { display: block; width: 100%; height: auto; border-radius: 11px; }
+
+/* controle remoto: pequeno no canto, cresce ao clicar */
+.remote {
+  --rw: 200px;
+  position: absolute; top: 10px; right: 10px; z-index: 5;
+  width: var(--rw);
+  transform-origin: top right;
+  transform: scale(.36);
+  transition: transform .28s cubic-bezier(.3, .8, .3, 1);
+}
+.remote:not(.open):hover { transform: scale(.4); }
+.remote.open { transform: scale(1); }
+.rc-body { position: relative; width: 100%; aspect-ratio: 200 / 480; pointer-events: none; }
+.remote.open .rc-body { pointer-events: auto; }
+.rc-body svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .45)); }
+.rc-btn { position: absolute; left: var(--x); top: var(--y); width: var(--w); height: var(--h); border: 0; padding: 0; margin: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.rc-btn:hover { background: rgba(255, 255, 255, .09); }
+.rc-btn:active { background: rgba(111, 214, 196, .3); }
+.rc-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rc-open { position: absolute; inset: 0; border: 0; padding: 0; margin: 0; background: transparent; cursor: pointer; border-radius: 40px; }
+.rc-open:focus-visible { outline: 6px solid var(--accent); outline-offset: 4px; }
+.remote.open .rc-open { display: none; }
+.rc-close { display: none; position: absolute; top: -8px; left: -8px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+.remote.open .rc-close { display: block; }
+.rc-readout { position: absolute; top: 6px; right: calc(100% + 10px); background: rgba(17, 22, 29, .92); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; color: var(--accent); white-space: nowrap; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.rc-readout.on { opacity: 1; }
+@media (max-width: 640px) { .remote { --rw: 168px; } }
+@media (prefers-reduced-motion: reduce) { .remote { transition: none; } }
+.hint {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  width: max-content; max-width: calc(100% - 24px);
+  background: rgba(17, 22, 29, .86);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fg);
+  pointer-events: none;
+}
+.hint small { display: block; color: var(--muted); font-size: 11.5px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn {
+  font: inherit; font-weight: 500;
+  color: var(--fg);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+.btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.slider label span { color: var(--accent); font-variant-numeric: tabular-nums; margin-left: 6px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.transport { display: flex; gap: 12px; align-items: center; }
+.transport .btn { min-width: 92px; }
+.seek { flex: 1; min-width: 0; }
+input[type="range"] { accent-color: var(--accent); width: 100%; margin: 0; }
+.time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.slider { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.slider label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.status { margin: 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom summary { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; cursor: pointer; }
+.custom summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.custom-body { display: flex; flex-direction: column; gap: 20px; margin-top: 16px; }
+.group { display: flex; flex-direction: column; gap: 10px; }
+.group h2 { margin: 0; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; font: inherit; color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px 6px 8px; cursor: pointer; }
+.chip:hover { border-color: var(--muted); }
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stagebar { position: absolute; left: 10px; bottom: 10px; z-index: 4; display: flex; flex-direction: column; gap: 6px; max-width: calc(100% - 20px); }
+.scenes, .models { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.sm { padding: 5px 12px; font-size: 13px; background: rgba(17, 22, 29, .88); }
+.chip .sw { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .25); }
+.colors { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 16px; }
+.color { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
+.color input { flex: none; width: 42px; height: 32px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); cursor: pointer; }
+.saves { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; margin-top: 10px; }
+.sv { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sv b { font-weight: 600; overflow-wrap: anywhere; }
+.sv small { opacity: .65; }
+.sv .sw2 { display: flex; gap: 4px; }
+.sv .sw2 i { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(255,255,255,.2); display: block; }
+.sv .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.cordctl input[type=text] { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #3a4350); background: transparent; color: inherit; font: inherit; min-width: 0; }
+.cordctl { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 16px; margin-top: 12px; }
+.cordctl .fld { display: flex; flex-direction: column; gap: 6px; font-size: 14px; min-width: 0; }
+.cordctl select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, #3a4350); background: var(--panel2, transparent); color: inherit; font: inherit; }
+.cordctl input[type=range] { width: 100%; accent-color: var(--accent); }
+.cordctl output { opacity: .65; font-variant-numeric: tabular-nums; margin-left: 4px; }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; }
+.checks label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.checks input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+@media (max-width: 520px) { .transport { flex-wrap: wrap; } .seek { flex-basis: 100%; order: 3; } }
+/* rádio do carro: abre por cima da página, medidas em cqw para escalar junto com a largura */
+.rd-hit { position: absolute; z-index: 3; border: 0; padding: 0; margin: 0; background: transparent; cursor: pointer; border-radius: 6px; }
+.rd-hit:hover { background: rgba(255, 255, 255, .12); box-shadow: 0 0 0 2px var(--accent); }
+.rd-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+:root { --rd-ink: #e9edf2; --rd-dim: #aeb6c1; }
+.rd-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(5, 7, 10, .78);
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.rd-box { max-width: 100%; max-height: 100%; overflow: auto; padding: 22px 6px 6px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.radio { --rd-glow: var(--accent); position: relative; flex: none; width: clamp(640px, 92vw, 840px); container-type: inline-size; margin: 0 auto; }
+.rd-plate { position: relative; height: 31cqw; background: linear-gradient(#1a1c20, #0a0b0d); border: .35cqw solid #2a2d33; border-radius: 1.6cqw; box-shadow: 0 2cqw 5cqw rgba(0, 0, 0, .6), inset 0 .2cqw 0 rgba(255, 255, 255, .08); color: var(--rd-ink); font-family: var(--font-body); }
+.rd-plate > * { position: absolute; }
+.rd-title { left: 34cqw; top: 1.5cqw; font-size: 1.45cqw; letter-spacing: .08em; color: var(--rd-dim); white-space: nowrap; }
+.rd-mic, .rd-lab2 { font-size: 1.4cqw; letter-spacing: .06em; color: var(--rd-dim); white-space: nowrap; }
+.rd-ring { border-radius: 50%; border: 1cqw solid var(--rd-glow); border-left-color: transparent; border-right-color: transparent; box-shadow: 0 0 1.6cqw var(--rd-glow), inset 0 0 1.2cqw rgba(0, 0, 0, .6); opacity: .9; }
+.rd-knob { border-radius: 50%; cursor: grab; touch-action: none; background: radial-gradient(circle at 35% 30%, #3c4048, #0c0d10 72%); box-shadow: 0 .6cqw 1.4cqw rgba(0, 0, 0, .7), inset 0 0 0 .3cqw #000, inset 0 0 0 .55cqw #1e2126; }
+.rd-knob:active { cursor: grabbing; }
+.rd-knob::before { content: ""; position: absolute; inset: 1cqw; border-radius: 50%; background: repeating-conic-gradient(rgba(255, 255, 255, .06) 0 4deg, rgba(0, 0, 0, .14) 4deg 8deg); }
+.rd-knob i { position: absolute; left: 50%; top: 1.1cqw; width: .55cqw; height: 2.4cqw; margin-left: -.27cqw; border-radius: .3cqw; background: var(--rd-glow); box-shadow: 0 0 .8cqw var(--rd-glow); }
+.rd-knob:focus-visible { outline: 2px solid var(--rd-glow); outline-offset: .6cqw; }
+.rd-b { border: 0; margin: 0; padding: 0; font: inherit; font-size: 1.55cqw; line-height: 1; color: var(--rd-ink); background: linear-gradient(#2a2e35, #17191d); border-radius: .9cqw; cursor: pointer; display: grid; place-items: center; box-shadow: 0 .25cqw 0 #050607, inset 0 .15cqw 0 rgba(255, 255, 255, .1); }
+.rd-b:hover { filter: brightness(1.25); }
+.rd-b:active { transform: translateY(.2cqw); box-shadow: 0 0 0 #050607, inset 0 .15cqw 0 rgba(255, 255, 255, .05); }
+.rd-b:focus-visible { outline: 2px solid var(--rd-glow); outline-offset: 2px; }
+.rd-b.glow { background: linear-gradient(color-mix(in srgb, var(--rd-glow) 80%, #fff), var(--rd-glow)); color: #03121a; box-shadow: 0 0 1.6cqw var(--rd-glow), 0 .25cqw 0 #050607; }
+.rd-b.lab { background: transparent; box-shadow: none; font-size: 1.5cqw; letter-spacing: .06em; color: var(--rd-ink); }
+.rd-b.lab:hover { color: var(--rd-glow); filter: none; }
+.rd-b.on { color: var(--rd-glow); }
+.rd-b .ic { width: 2.8cqw; height: auto; fill: currentColor; display: block; }
+.rd-lcd { left: 34cqw; top: 4.6cqw; width: 41.5cqw; height: 15.6cqw; background: #040506; border: .3cqw solid #1d2025; border-radius: .8cqw; box-shadow: inset 0 0 2cqw rgba(0, 0, 0, .9); overflow: hidden; display: flex; flex-direction: column; gap: .3cqw; padding: .7cqw 1.5cqw; }
+.rd-r1 { display: flex; justify-content: space-between; align-items: baseline; gap: 1cqw; }
+.rd-big { font-family: Orbitron, "Segoe UI", system-ui, sans-serif; font-weight: 700; font-size: 5.6cqw; line-height: 1.05; letter-spacing: .15cqw; color: #f4f6f9; text-shadow: 0 0 1cqw rgba(255, 255, 255, .22); white-space: nowrap; }
+.rd-time { font-family: Orbitron, "Segoe UI", system-ui, sans-serif; font-size: 2.1cqw; color: var(--rd-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rd-track { height: 2.3cqw; font-size: 1.7cqw; line-height: 2.3cqw; color: var(--rd-dim); white-space: nowrap; overflow: hidden; }
+.rd-track span { display: inline-block; }
+.rd-track.scroll span { padding-left: 100%; animation: rdscroll 10s linear infinite; }
+@keyframes rdscroll { to { transform: translateX(-100%); } }
+.rd-spec { position: static !important; width: 100%; height: 2.9cqw; display: block; }
+.rd-tags { position: static !important; display: flex; gap: 1.6cqw; font-size: 1.4cqw; letter-spacing: .06em; color: #4d5560; white-space: nowrap; }
+.rd-tags .on { color: var(--rd-glow); }
+.rd-slot { background: #050607; border: .25cqw solid #2a2d33; border-radius: .5cqw; }
+.rd-aux { border-radius: 50%; background: radial-gradient(circle, #000 35%, #2a2d33 40%, #15171a 70%); border: .2cqw solid #34383f; }
+.rd-charge { border-radius: .7cqw; background: linear-gradient(#d44b3a, #8e2a1d); box-shadow: inset 0 0 0 .3cqw rgba(0, 0, 0, .35); }
+.rd-usb { border: .3cqw solid #3a3e45; margin: 0; padding: 0; background: #07080a; border-radius: .6cqw; cursor: pointer; }
+.rd-usb:hover { border-color: var(--rd-glow); }
+.rd-usb:focus-visible { outline: 2px solid var(--rd-glow); outline-offset: 2px; }
+.rd-usb::before { content: ""; position: absolute; left: 1cqw; top: 1.2cqw; width: 5cqw; height: 1.4cqw; background: #2a2d33; }
+.rd-stick { position: absolute; left: 3.6cqw; top: -.3cqw; width: 8.6cqw; height: 4.5cqw; border-radius: .6cqw 1.8cqw 1.8cqw .6cqw; border: .25cqw solid rgba(0, 0, 0, .45); box-shadow: 0 .5cqw 1cqw rgba(0, 0, 0, .55), inset 0 .5cqw 0 rgba(255, 255, 255, .25); }
+.rd-stick::after { content: ""; position: absolute; right: 1.2cqw; top: 50%; width: 1cqw; height: 1cqw; margin-top: -.5cqw; border-radius: 50%; background: rgba(0, 0, 0, .4); }
+.rd-close { position: absolute; top: -18px; right: -4px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; z-index: 2; }
+.rd-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rd-menu { position: absolute; z-index: 3; right: 1.5cqw; top: 11cqw; min-width: min(260px, 90%); background: #101317; border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); font-size: 14px; }
+.rd-menu p { margin: 0 0 2px; color: var(--muted); }
+.rd-mi { display: flex; align-items: center; gap: 10px; font: inherit; color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; text-align: left; }
+.rd-mi:hover { border-color: var(--accent); }
+.rd-mi .dot { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+.rd-hint { margin: 0 auto; color: var(--muted); font-size: 13px; text-align: center; }
+
+/* pendrives */
+.ph { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+.muted { margin: 4px 0 0; color: var(--muted); font-size: 14px; max-width: 70ch; }
+.penform { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.fld { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; min-width: 0; }
+.fld input[type="text"], .fld select { font: inherit; font-size: 14px; color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; min-width: 0; text-transform: none; letter-spacing: 0; }
+.fld input[type="color"] { width: 48px; height: 38px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); cursor: pointer; }
+.pens { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 12px; }
+.pen { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pen.over, .pen.live { border-color: var(--accent); }
+.pen-top { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.pen-top svg { flex: none; }
+.pen-name { font-weight: 600; overflow-wrap: anywhere; }
+.pen-meta { font-size: 12.5px; color: var(--muted); }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.pen-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn.sm { padding: 7px 12px; font-size: 13.5px; }
+.tracks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 210px; overflow: auto; }
+.tracks li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tr-name { flex: 1; min-width: 0; text-align: left; background: transparent; border: 0; color: var(--fg); font: inherit; font-size: 13.5px; padding: 5px 6px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.tr-name:disabled { cursor: default; color: var(--muted); }
+.tr-name[aria-current="true"] { color: var(--accent); background: rgba(111, 214, 196, .1); }
+.tr-x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; padding: 2px 8px; border-radius: 6px; }
+.tr-x:hover { color: var(--fg); }
+.empty { color: var(--muted); font-size: 13.5px; margin: 0; }
+.status.wrap-ok { white-space: normal; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .rd-track.scroll span { animation: none; } .rd-b:active { transform: none; } }
+</style>
+
+<style>[hidden]{display:none!important}body{margin:0}</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Caixa de Som</h1>
+    <p class="lede">Solte uma música no palco e veja os alto-falantes baterem no ritmo. Escolha o modelo da caixa e o ambiente (palco, porta-malas ou sala), abra o rádio e crie pendrives com suas músicas.</p>
+  </header>
+
+  <section class="stage" id="stage">
+    <canvas id="cv" role="img" aria-label="Caixa de som vista de três quartos, com woofer, dois médios, tweeter, rádio e corneta, colocada no palco, no porta-malas de um carro ou sobre uma cômoda, com o cone do woofer se movendo conforme a música"></canvas>
+    <div class="hint" id="hint">Arraste uma música para cá<small>MP3, WAV, OGG ou M4A</small></div>
+    <button class="rd-hit" id="rdHit" type="button" aria-label="Abrir o rádio da caixa de som" title="Abrir o rádio"></button>
+    <div class="stagebar">
+      <div class="models" id="models" role="group" aria-label="Modelo da caixa">
+        <button class="chip sm" type="button" data-model="classica" aria-pressed="true">Clássica</button>
+        <button class="chip sm" type="button" data-model="torre" aria-pressed="false">Torre</button>
+        <button class="chip sm" type="button" data-model="azul" aria-pressed="false">Caixa azul</button>
+        <button class="chip sm" type="button" data-model="dupla" aria-pressed="false">Dupla 4 vias</button>
+        <button class="chip sm" type="button" data-model="led" aria-pressed="false">Paredão LED</button>
+        <button class="chip sm" type="button" data-model="carpete" aria-pressed="false">Caixa carpete</button>
+        <button class="chip sm" type="button" data-model="tr" aria-pressed="false">Caixa TR 620</button>
+        <button class="chip sm" type="button" data-model="vulcano" aria-pressed="false">Caixa Vulcano</button>
+        <button class="chip sm" type="button" data-model="vulcazul" aria-pressed="false">Vulcano azul</button>
+      </div>
+      <div class="scenes" id="scenes" role="group" aria-label="Ambiente">
+      <button class="chip sm" type="button" data-scene="palco" aria-pressed="true">Palco</button>
+      <button class="chip sm" type="button" data-scene="carro" aria-pressed="false">Porta-malas</button>
+      <button class="chip sm" type="button" data-scene="sala" aria-pressed="false">Sala</button>
+    </div>
+    </div>
+    <div class="remote" id="remote">
+      <div class="rc-body" id="rcBody">
+        <svg viewBox="0 0 200 480" style="overflow:visible" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="rcShell" x1="0" y1="0" x2="0" y2="1"><stop id="rcShellA" offset="0" stop-color="#b6b9be"/><stop id="rcShellB" offset="1" stop-color="#7a7d83"/></linearGradient>
+            <linearGradient id="rcKey" x1="0" y1="0" x2="0" y2="1"><stop id="rcKeyA" offset="0" stop-color="#383a40"/><stop id="rcKeyB" offset="1" stop-color="#232529"/></linearGradient>
+          </defs>
+          <path fill-rule="evenodd" fill="#1b1c1f" d="M68,306 a32,30 0 1,0 64,0 a32,30 0 1,0 -64,0 Z M86,318 a14,10 0 1,0 28,0 a14,10 0 1,0 -28,0 Z"/>
+          <path id="rcShellPath" fill="url(#rcShell)" stroke="#5f6268" stroke-width="1.5" d="M100,4 C146,4 176,38 184,80 C190,112 174,128 174,152 C174,176 190,196 186,230 C182,272 150,300 100,300 C50,300 18,272 14,230 C10,196 26,176 26,152 C26,128 10,112 16,80 C24,38 54,4 100,4 Z"/>
+          <path fill="#1b1c1f" stroke="#0c0d0f" stroke-width="1.5" transform="translate(12 18.2) scale(.88)" d="M100,4 C146,4 176,38 184,80 C190,112 162,128 162,152 C162,176 190,196 186,230 C182,272 150,300 100,300 C50,300 18,272 14,230 C10,196 38,176 38,152 C38,128 10,112 16,80 C24,38 54,4 100,4 Z"/>
+          <circle cx="100" cy="22" r="1.8" fill="#0a0b0d"/>
+          <circle cx="100" cy="50" r="16" fill="#2b2d32" stroke="#3b3e44" stroke-width="1.2"/>
+          <path d="M93.5,43.5 A11,11 0 1 0 106.5,43.5 M100,38 V50" fill="none" stroke="#f1f3f6" stroke-width="2.6" stroke-linecap="round"/>
+          <rect x="54" y="84" width="38" height="58" rx="9" fill="url(#rcKey)" class="rc-key" stroke="#44474d"/>
+          <rect x="108" y="84" width="38" height="58" rx="9" fill="url(#rcKey)" class="rc-key" stroke="#44474d"/>
+          <rect x="54" y="170" width="38" height="58" rx="9" fill="url(#rcKey)" class="rc-key" stroke="#44474d"/>
+          <rect x="108" y="170" width="38" height="58" rx="9" fill="url(#rcKey)" class="rc-key" stroke="#44474d"/>
+          <path d="M58,113 H88 M112,113 H142 M58,199 H88" stroke="#0e0f11" stroke-width="1.6"/>
+          <g fill="#f1f3f6">
+            <polygon points="64,91 73,98 64,105"/><polygon points="73,91 82,98 73,105"/>
+            <polygon points="82,121 73,128 82,135"/><polygon points="73,121 64,128 73,135"/>
+            <polygon points="64,189 73,178 82,189"/><polygon points="64,209 73,220 82,209"/>
+            <polygon points="116,189 116,209 130,199"/><rect x="133" y="189" width="3.6" height="20" rx="1"/>
+          </g>
+          <path d="M119,98 H135 M127,90 V106 M119,128 H135" stroke="#f1f3f6" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <circle id="rcLed" cx="148" cy="262" r="5" fill="#c9ccd1" stroke="#7a7d83"/>
+          <g id="cord">
+            <path id="rcCord1" d="M100,348 V540" fill="none" stroke="#8a5cc4" stroke-width="40" stroke-linecap="round"/>
+            <path id="rcCord2" d="M86,350 V538 M114,350 V538" fill="none" stroke="#c7a9ee" stroke-width="1.3" stroke-dasharray="3 3" opacity=".6"/>
+            <g id="cordPat"></g>
+            <circle cx="100" cy="318" r="7.5" fill="none" stroke="#c9ced6" stroke-width="2.4"/>
+            <rect id="rcKnot" x="81" y="326" width="38" height="24" rx="5" fill="#15161a" stroke="#05060a"/>
+            <path id="rcKnotLine" d="M88,335 H112 M88,342 H112" stroke="#3a3d45" stroke-width="1.8" stroke-linecap="round"/>
+          </g>
+        </svg>
+        <button class="rc-btn" id="rcPower" type="button" aria-label="Silenciar ou ativar o som" style="--x:42%;--y:7.083%;--w:16%;--h:6.667%"></button>
+        <button class="rc-btn" id="rcFF" type="button" aria-label="Avançar 10 segundos" style="--x:27%;--y:17.5%;--w:19%;--h:5.833%"></button>
+        <button class="rc-btn" id="rcRew" type="button" aria-label="Voltar 10 segundos" style="--x:27%;--y:23.75%;--w:19%;--h:5.833%"></button>
+        <button class="rc-btn" id="rcVolUp" type="button" aria-label="Aumentar o volume" style="--x:54%;--y:17.5%;--w:19%;--h:5.833%"></button>
+        <button class="rc-btn" id="rcVolDown" type="button" aria-label="Diminuir o volume" style="--x:54%;--y:23.75%;--w:19%;--h:5.833%"></button>
+        <button class="rc-btn" id="rcBassUp" type="button" aria-label="Mais grave" style="--x:27%;--y:35.417%;--w:19%;--h:5.833%"></button>
+        <button class="rc-btn" id="rcBassDown" type="button" aria-label="Menos grave" style="--x:27%;--y:41.667%;--w:19%;--h:5.833%"></button>
+        <button class="rc-btn" id="rcPlay" type="button" aria-label="Tocar ou pausar" style="--x:54%;--y:35.417%;--w:19%;--h:12.083%"></button>
+      </div>
+      <button class="rc-open" id="rcOpen" type="button" aria-expanded="false" aria-label="Abrir controle remoto"></button>
+      <button class="rc-close" id="rcClose" type="button" aria-label="Guardar controle remoto">×</button>
+      <div class="rc-readout" id="rcReadout" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Controles">
+    <div class="row">
+      <button class="btn primary" id="openBtn" type="button">Abrir música</button>
+      <button class="btn" id="demoBtn" type="button">Ouvir exemplo</button>
+      <button class="btn" id="boostBtn" type="button" aria-pressed="false">Bass boost</button>
+      <button class="btn" id="radioBtn" type="button">Abrir rádio</button>
+      <input id="file" type="file" accept="audio/*" hidden>
+    </div>
+    <div class="transport">
+      <button class="btn" id="playBtn" type="button" disabled>Tocar</button>
+      <div class="seek"><input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Posição da música" disabled></div>
+      <span class="time" id="time">0:00 / 0:00</span>
+    </div>
+    <div class="sliders">
+      <div class="slider"><label for="bass">Grave <span id="bassVal">+0 dB</span></label><input id="bass" type="range" min="0" max="18" step="1" value="0"></div>
+      <div class="slider"><label for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></div>
+      <div class="slider"><label for="mov">Movimento do cone</label><input id="mov" type="range" min="0.5" max="1.5" step="0.05" value="1"></div>
+    </div>
+    <p class="status" id="status" aria-live="polite">Nenhuma música carregada.</p>
+  </section>
+
+  <section class="panel" id="penPanel" aria-labelledby="penH">
+    <div>
+      <h2 class="ph" id="penH">Pendrives</h2>
+      <p class="muted">Crie um pendrive, coloque músicas nele e ligue na entrada USB do rádio. Ao ligar, todas as músicas são carregadas e a primeira começa a tocar. Dá para soltar arquivos de áudio em cima do pendrive.</p>
+    </div>
+    <form class="penform" id="penForm">
+      <label class="fld"><span>Nome</span><input type="text" id="penName" maxlength="24" placeholder="Pendrive 1" autocomplete="off"></label>
+      <label class="fld"><span>Cor</span><input type="color" id="penColor" value="#e0603f"></label>
+      <label class="fld"><span>Capacidade</span><select id="penCap"><option value="512">512 MB</option><option value="2048" selected>2 GB</option><option value="8192">8 GB</option></select></label>
+      <button class="btn primary" type="submit">Criar pendrive</button>
+    </form>
+    <div class="pens" id="penList"></div>
+    <p class="status wrap-ok" id="penMsg" aria-live="polite"></p>
+    <input id="penFile" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus" multiple hidden>
+  </section>
+
+  <details class="panel custom" id="custom">
+    <summary>Personalizar</summary>
+    <div class="custom-body">
+      <div class="group">
+        <h2>Estilos prontos</h2>
+        <div class="presets" id="presets" role="group" aria-label="Estilos prontos"></div>
+      </div>
+      <div class="group">
+        <h2>Caixa de som</h2>
+        <div class="colors">
+          <label class="color"><input type="color" id="cBody"><span>Gabinete</span></label>
+          <label class="color"><input type="color" id="cFrame"><span>Aro do woofer</span></label>
+          <label class="color"><input type="color" id="cSilver"><span>Anéis dos médios e tweeter</span></label>
+          <label class="color"><input type="color" id="cCone"><span>Cone</span></label>
+          <label class="color"><input type="color" id="cGlow"><span>Visor e LED</span></label>
+        </div>
+        <div class="cordctl">
+          <label class="fld"><span>Brilho do LED <output id="oLedI"></output></span><input type="range" id="cLedI" min="0" max="200" step="5"></label>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="cHead"> Mostrar rádio</label>
+          <label><input type="checkbox" id="cHorn"> Mostrar corneta</label>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Controle remoto</h2>
+        <div class="colors">
+          <label class="color"><input type="color" id="cShell"><span>Casca</span></label>
+          <label class="color"><input type="color" id="cKeys"><span>Teclas</span></label>
+          <label class="color"><input type="color" id="cCord"><span>Cordinha</span></label>
+          <label class="color"><input type="color" id="cPatCol"><span>Cor do desenho</span></label>
+        </div>
+        <div class="cordctl">
+          <label class="fld"><span>Desenho da cordinha</span>
+            <select id="cPat">
+              <option value="cruz">Cruz</option><option value="estrela">Estrela</option><option value="coracao">Coração</option>
+              <option value="raio">Raio</option><option value="bolinhas">Bolinhas</option><option value="listras">Listras</option><option value="nenhum">Liso</option>
+            </select></label>
+          <label class="fld"><span>Largura <output id="oCordW"></output></span><input type="range" id="cCordW" min="16" max="64" step="1"></label>
+          <label class="fld"><span>Comprimento <output id="oCordL"></output></span><input type="range" id="cCordL" min="60" max="260" step="2"></label>
+          <label class="fld"><span>Tamanho do desenho <output id="oPatS"></output></span><input type="range" id="cPatS" min="40" max="140" step="2"></label>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Meus estilos salvos</h2>
+        <p class="muted">Salva a caixa que está na tela com todas as cores, o LED e a cordinha do controle. Depois é só tocar no estilo para voltar a ele.</p>
+        <form class="cordctl" id="svForm">
+          <label class="fld"><span>Nome do estilo</span><input type="text" id="svName" maxlength="28" placeholder="Meu paredão" autocomplete="off"></label>
+          <div class="row" style="align-self:end"><button class="btn primary" type="submit">Salvar estilo</button></div>
+        </form>
+        <div class="saves" id="svList"></div>
+        <p class="status" id="svMsg" aria-live="polite"></p>
+      </div>
+      <div class="row"><button class="btn" id="cReset" type="button">Restaurar padrão</button></div>
+    </div>
+  </details>
+</main>
+
+<div class="rd-modal" id="rdModal" hidden role="dialog" aria-modal="true" aria-label="Rádio do carro">
+  <div class="rd-box">
+    <div class="radio" id="radio">
+      <button class="rd-close" id="rdClose" type="button" aria-label="Fechar rádio">×</button>
+      <div class="rd-plate">
+        <span class="rd-title">RADIO/USB/MP3 PLAYER</span>
+        <span class="rd-mic" style="left:14.4cqw;top:1.5cqw" aria-hidden="true">MIC</span>
+        <div class="rd-ring" style="left:5cqw;top:4.5cqw;width:22cqw;height:22cqw" aria-hidden="true"></div>
+        <div class="rd-knob" id="rdKnob" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="40" aria-valuenow="32" style="left:7.5cqw;top:7cqw;width:17cqw;height:17cqw"><i></i></div>
+        <button class="rd-b glow" data-act="prev" type="button" aria-label="Faixa anterior" style="left:1.2cqw;top:12.7cqw;width:6cqw;height:5.6cqw"><svg class="ic" viewBox="0 0 20 16" aria-hidden="true"><path d="M20 1v14L10 8zM10 1v14L0 8z"/></svg></button>
+        <button class="rd-b glow" data-act="next" type="button" aria-label="Próxima faixa" style="left:24.8cqw;top:12.7cqw;width:6cqw;height:5.6cqw"><svg class="ic" viewBox="0 0 20 16" aria-hidden="true"><path d="M0 1v14l10-7zM10 1v14l10-7z"/></svg></button>
+        <button class="rd-b lab" data-act="mod" type="button" style="left:2.2cqw;top:4.4cqw;width:6.4cqw;height:3cqw" aria-label="Trocar fonte: USB ou rádio FM">MOD</button>
+        <button class="rd-b lab" data-act="clk" type="button" style="left:24.6cqw;top:4.4cqw;width:6.4cqw;height:3cqw" aria-label="Mostrar a hora">CLK</button>
+        <button class="rd-b lab" data-act="mute" type="button" style="left:2.2cqw;top:21.6cqw;width:6.4cqw;height:3cqw" aria-label="Silenciar">MUTE</button>
+        <button class="rd-b lab" data-act="bnd" type="button" style="left:24.6cqw;top:20.2cqw;width:6.4cqw;height:3cqw" aria-label="Equalizador de graves">BND</button>
+        <button class="rd-b lab" data-act="rst" type="button" style="left:13.2cqw;top:27.4cqw;width:5.6cqw;height:2.8cqw" aria-label="Reiniciar ajustes">RST</button>
+
+        <div class="rd-lcd">
+          <div class="rd-r1"><span class="rd-big" id="rdBig">FM 87.5</span><span class="rd-time" id="rdTime"></span></div>
+          <div class="rd-track" id="rdTrack"><span id="rdTrackT"></span></div>
+          <canvas class="rd-spec" id="rdSpec" width="280" height="36" aria-hidden="true"></canvas>
+          <div class="rd-tags"><span id="tgUsb">USB</span><span id="tgInt">INT</span><span id="tgRpt">RPT</span><span id="tgRdm">RDM</span><span id="tgEq">FLAT</span><span id="tgMute">MUTE</span></div>
+        </div>
+
+        <button class="rd-b" data-act="play" type="button" style="left:34cqw;top:22.6cqw;width:6.1cqw;height:4.8cqw" aria-label="Tocar ou pausar">1/▶‖</button>
+        <button class="rd-b" data-act="int" type="button" style="left:40.75cqw;top:22.6cqw;width:6.1cqw;height:4.8cqw" aria-label="Introdução de 10 segundos">2/INT</button>
+        <button class="rd-b" data-act="rpt" type="button" style="left:47.5cqw;top:22.6cqw;width:6.1cqw;height:4.8cqw" aria-label="Repetir faixa">3/RPT</button>
+        <button class="rd-b" data-act="rdm" type="button" style="left:54.25cqw;top:22.6cqw;width:6.1cqw;height:4.8cqw" aria-label="Ordem aleatória">4/RDM</button>
+        <button class="rd-b" data-act="m10" type="button" style="left:61cqw;top:22.6cqw;width:6.1cqw;height:4.8cqw" aria-label="Voltar 10 faixas">5/-10</button>
+        <button class="rd-b" data-act="p10" type="button" style="left:67.75cqw;top:22.6cqw;width:6.1cqw;height:4.8cqw" aria-label="Avançar 10 faixas">6/+10</button>
+        <span class="rd-aux" style="left:75.6cqw;top:23.7cqw;width:2.8cqw;height:2.8cqw" aria-hidden="true"></span>
+
+        <span class="rd-lab2" style="left:79.8cqw;top:2.6cqw" aria-hidden="true">TF</span>
+        <span class="rd-lab2" style="left:88.4cqw;top:2.6cqw" aria-hidden="true">USB</span>
+        <span class="rd-slot" style="left:79.8cqw;top:5.6cqw;width:5cqw;height:7.4cqw" aria-hidden="true"></span>
+        <button class="rd-usb" id="rdUsb" type="button" aria-label="Entrada USB: ligar ou tirar pendrive" style="left:87cqw;top:5.8cqw;width:9cqw;height:4.2cqw"><span class="rd-stick" id="rdStick" hidden></span></button>
+        <span class="rd-lab2" style="left:88.4cqw;top:12.4cqw" aria-hidden="true">IR</span>
+        <span class="rd-charge" style="left:79.8cqw;top:23.8cqw;width:16cqw;height:3.6cqw" aria-hidden="true"></span>
+      </div>
+      <div class="rd-menu" id="rdMenu" hidden></div>
+    </div>
+    <p class="rd-hint">Gire o botão (ou use as setas do teclado) para mudar o volume. Clique na entrada USB para ligar um pendrive.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('cv'), g = cv.getContext('2d');
+  var css = getComputedStyle(document.documentElement);
+  var C = {};
+  ['stage','floor','body','bodySide','bodyTop','frame','surround','silver','coneA','coneB','metal','accent','muted'].forEach(function (k) {
+    C[k] = css.getPropertyValue('--c-' + k.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); })).trim();
+  });
+
+  /* ---------- cena em 3D simples (vista 3/4 de uma caixa de som automotiva branca) ---------- */
+  var VW = 820, VH = 560;
+  var W = 580, H = 320, D = 250;             // largura, altura, profundidade
+  var WX = -155, WY = 15, WR = 112;          // woofer
+  var MX = 30, MY1 = 82, MY2 = -40, MR = 42; // dois médios empilhados
+  var TX = 181, TY = 40, TR = 28;            // tweeter
+  var YAW = -28 * Math.PI / 180, PIT = 14 * Math.PI / 180;
+  var cT = Math.cos(YAW), sT = Math.sin(YAW), cP = Math.cos(PIT), sP = Math.sin(PIT);
+  var OX = 298, OY = 306;
+  var S = 1;
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function resize() {
+    var w = cv.parentElement.clientWidth || 600;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(w * dpr * VH / VW);
+    S = cv.width / VW;
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(cv.parentElement);
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ponto 3D (x direita, y cima, z para fora da frente) -> tela
+  var YO = 0, ZO = 0;   // deslocamentos usados ao desenhar cada modelo
+  function P(x, y, z) {
+    z += ZO; y += YO;
+    var xp = x * cT + z * sT, zp = -x * sT + z * cT;
+    return [OX + xp, OY - (y * cP - zp * sP)];
+  }
+  function circ(cx, cy, r, z, n) {
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+      var a = i / n * Math.PI * 2;
+      pts.push(P(cx + r * Math.cos(a), cy + r * Math.sin(a), z));
+    }
+    return pts;
+  }
+  function box(x0, y0, x1, y1, z) { return [P(x0, y1, z), P(x1, y1, z), P(x1, y0, z), P(x0, y0, z)]; }
+  function poly(pts, fill, stroke, lw) {
+    g.beginPath();
+    g.moveTo(pts[0][0], pts[0][1]);
+    for (var i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+    g.closePath();
+    if (fill) { g.fillStyle = fill; g.fill(); }
+    if (stroke) { g.strokeStyle = stroke; g.lineWidth = lw || 1; g.lineJoin = 'round'; g.stroke(); }
+  }
+  function hex(c) {
+    var m = /^#([0-9a-f]{6})$/i.exec(c);
+    var n = m ? parseInt(m[1], 16) : 0;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function mix(a, b, t) {
+    var x = hex(a), y = hex(b);
+    return 'rgb(' + Math.round(x[0] + (y[0] - x[0]) * t) + ',' + Math.round(x[1] + (y[1] - x[1]) * t) + ',' + Math.round(x[2] + (y[2] - x[2]) * t) + ')';
+  }
+
+  /* ---------- realismo: luz de cima à esquerda, metal escovado, brilho e sombra macia ---------- */
+  var grainPat = null, curTex = null;
+  function makeGrain() {
+    var c = document.createElement('canvas'); c.width = c.height = 160;
+    var x = c.getContext('2d'), d = x.createImageData(160, 160), i, v;
+    for (i = 0; i < d.data.length; i += 4) { v = 90 + Math.random() * 165; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = Math.random() * 30; }
+    x.putImageData(d, 0, 0);
+    return c;
+  }
+  function annulus(po, pi, fill) {
+    g.beginPath();
+    po.forEach(function (p, i) { if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }); g.closePath();
+    pi.forEach(function (p, i) { if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }); g.closePath();
+    g.fillStyle = fill; g.fill('evenodd');
+  }
+  function metalFill(cx, cy, z, base, ang) {
+    var c = P(cx, cy, z), lt = mix(base, '#ffffff', 0.78), md = base, dk = mix(base, '#000000', 0.5), gr;
+    if (g.createConicGradient) {
+      gr = g.createConicGradient(ang || 0.7, c[0], c[1]);
+      [[0, lt], [0.1, md], [0.2, dk], [0.3, lt], [0.42, md], [0.5, dk], [0.62, lt], [0.74, md], [0.84, dk], [1, lt]].forEach(function (s) { gr.addColorStop(s[0], s[1]); });
+    } else {
+      gr = g.createLinearGradient(c[0] - 30, c[1] - 30, c[0] + 30, c[1] + 30);
+      gr.addColorStop(0, lt); gr.addColorStop(0.5, dk); gr.addColorStop(1, md);
+    }
+    return gr;
+  }
+  function lightGrad(cx, cy, R, z, stops) {
+    var A = P(cx - R, cy + R, z), B = P(cx + R, cy - R, z), gr = g.createLinearGradient(A[0], A[1], B[0], B[1]);
+    stops.forEach(function (s) { gr.addColorStop(s[0], s[1]); });
+    return gr;
+  }
+  function clipPoly(pts) { g.beginPath(); pts.forEach(function (p, i) { if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }); g.closePath(); g.clip(); }
+  function specular(cx, cy, z, rx, a) {
+    var c = P(cx, cy, z), gr = g.createRadialGradient(0, 0, 0, 0, 0, rx);
+    gr.addColorStop(0, 'rgba(255,255,255,' + a + ')'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.save(); g.translate(c[0], c[1]); g.scale(1, 0.62); g.rotate(-0.5); g.fillStyle = gr; g.fillRect(-rx, -rx, 2 * rx, 2 * rx); g.restore();
+  }
+  // brilho aditivo (LEDs, telas)
+  function ledK() { return Math.max(0, Math.min(2, (cfg.ledI == null ? 100 : cfg.ledI) / 100)); }
+  function glowSpot(x, y, z, r, col, a) {
+    var L = ledK(); a *= L; r *= 0.7 + 0.3 * L;
+    var c = P(x, y, z), gr = g.createRadialGradient(c[0], c[1], 0, c[0], c[1], r);
+    gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, Math.min(1, a)); g.fillStyle = gr;
+    g.fillRect(c[0] - r, c[1] - r, 2 * r, 2 * r); g.restore();
+  }
+  // sombra macia no chão: camadas que crescem
+  function softShadow(w, h, D, alpha) {
+    var i, e;
+    for (i = 0; i < 8; i++) {
+      e = 6 + i * 8;
+      poly([P(-w - e, -h, e * 0.7), P(w + e, -h, e * 0.7), P(w + e, -h, -D - e), P(-w - e, -h, -D - e)], 'rgba(0,0,0,' + (alpha / 8 * 1.15).toFixed(3) + ')');
+    }
+    poly([P(-w + 6, -h, 6), P(w + 6, -h, 6), P(w - 4, -h, -D + 4), P(-w + 6, -h, -D + 4)], 'rgba(0,0,0,' + (alpha * 0.45).toFixed(2) + ')');
+  }
+
+  // texto (marca) colado no plano do cone: linhas [texto, cor]; cabe na largura w
+  function capLabel(cx, cy, z, w, lines) {
+    var p = P(cx, cy, z), p1 = P(cx + 1, cy, z), p2 = P(cx, cy + 1, z), sz = 100, i, mw = 0, lh;
+    g.save();
+    g.transform(p1[0] - p[0], p1[1] - p[1], p[0] - p2[0], p[1] - p2[1], p[0], p[1]);
+    g.font = '800 100px "Segoe UI", Arial, sans-serif';
+    for (i = 0; i < lines.length; i++) mw = Math.max(mw, g.measureText(lines[i][0]).width);
+    sz = Math.min(100 * w / mw, w * 0.5);
+    g.font = '800 ' + sz.toFixed(2) + 'px "Segoe UI", Arial, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle'; lh = sz * 1.02;
+    for (i = 0; i < lines.length; i++) {
+      g.fillStyle = lines[i][1];
+      g.fillText(lines[i][0], 0, (i - (lines.length - 1) / 2) * lh);
+    }
+    g.restore();
+  }
+  // alto-falante genérico: aro, borracha, cone, cúpula
+  function drawDriver(cx, cy, R, o, dx) {
+    if (o.mv != null) dx *= o.mv;
+    var conc = o.depth >= 0, k, a, p, gr;
+    if (o.silver) {
+      annulus(circ(cx, cy, R + 11, 0.6, 64), circ(cx, cy, R + 4.5, 0.6, 64), metalFill(cx, cy, 0.6, C.silver, 0.6));
+      poly(circ(cx, cy, R + 11, 0.6, 64), null, 'rgba(0,0,0,0.55)', 1);
+      poly(circ(cx, cy, R + 4.5, 0.8, 64), C.frame, 'rgba(0,0,0,0.6)', 1);
+    } else {
+      poly(circ(cx, cy, R + 13, 0.5, 64), lightGrad(cx, cy, R + 13, 0.5, [[0, mix(C.frame, '#ffffff', 0.24)], [1, mix(C.frame, '#000000', 0.4)]]), '#05070a', 1.5);
+      for (k = 0; k < 4; k++) {
+        a = Math.PI / 4 + k * Math.PI / 2;
+        p = P(cx + (R + 6.5) * Math.cos(a), cy + (R + 6.5) * Math.sin(a), 1);
+        gr = g.createRadialGradient(p[0] - 1, p[1] - 1, 0.4, p[0], p[1], 3.4);
+        gr.addColorStop(0, '#f2f4f7'); gr.addColorStop(0.5, C.metal); gr.addColorStop(1, '#23262c');
+        g.beginPath(); g.arc(p[0], p[1], 3, 0, 7); g.fillStyle = gr; g.fill();
+      }
+    }
+    poly(circ(cx, cy, R, 2, 64), lightGrad(cx, cy, R, 2, [[0, mix(C.surround, '#ffffff', 0.32)], [0.5, C.surround], [1, mix(C.surround, '#000000', 0.55)]]), '#2b3037', 1);
+    g.strokeStyle = 'rgba(255,255,255,0.2)'; g.lineWidth = 1.6; g.lineCap = 'round'; g.beginPath();
+    for (k = 0; k <= 16; k++) { a = Math.PI * (0.55 + k / 16 * 0.5); p = P(cx + R * 0.94 * Math.cos(a), cy + R * 0.94 * Math.sin(a), 2); if (k) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }
+    g.stroke();
+    var rin = R * 0.89, rthr = R * (o.capR || 0.27), z0 = -4 + dx * 0.3, z1 = -o.depth + dx, N = o.n;
+    var ca = o.chrome ? '#e3e6ea' : (o.ca || C.coneA), cb = o.chrome ? '#4c535d' : (o.cb || C.coneB);
+    for (var i = 0; i <= N; i++) {
+      var u = i / N, r = rin - (rin - rthr) * u, z = z0 + (z1 - z0) * u;
+      var col = mix(ca, cb, u * 0.85);
+      poly(circ(cx, cy, r, z, 56), col, mix(col, '#ffffff', 0.1), 0.8);
+    }
+    // luz sobre o cone
+    g.save(); clipPoly(circ(cx, cy, rin, z0, 56));
+    var c0 = P(cx, cy, z0);
+    g.fillStyle = lightGrad(cx, cy, rin, z0, conc ? [[0, 'rgba(0,0,0,0.5)'], [0.5, 'rgba(0,0,0,0)'], [1, 'rgba(255,255,255,0.2)']] : [[0, 'rgba(255,255,255,0.22)'], [0.55, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.48)']]);
+    g.fillRect(c0[0] - 4 * R, c0[1] - 4 * R, 8 * R, 8 * R);
+    if (o.chrome) { g.globalAlpha = 0.55; g.fillStyle = metalFill(cx, cy, z1, '#c9ced6', 0.2); g.fillRect(c0[0] - 4 * R, c0[1] - 4 * R, 8 * R, 8 * R); }
+    g.restore();
+    if (o.ring) {
+      poly(circ(cx, cy, R * 0.46, z1 + 0.6, 48), lightGrad(cx, cy, R * 0.46, z1 + 0.6, [[0, mix(o.ring, '#ffffff', 0.3)], [1, mix(o.ring, '#000000', 0.45)]]), mix(o.ring, '#000000', 0.55), 1);
+      poly(circ(cx, cy, R * 0.33, z1 + 1.2, 40), '#101114', null);
+    }
+    var capDark = o.chrome ? '#6e7681' : (o.cd || '#0e1014'), capLight = o.chrome ? '#f1f3f6' : (o.cl || '#3a3f48');
+    // cúpula abaulada: anéis empilhados em z (domo) + sombreado esférico por cima do nome
+    var dh = rthr * 0.2, K = 10, kk, t, rr;
+    poly(circ(cx, cy, rthr, z1 + 0.3, 44), mix(capDark, '#000000', 0.35), 'rgba(0,0,0,0.35)', 0.8);
+    for (kk = 0; kk < K; kk++) {
+      t = kk / K; rr = rthr * Math.sqrt(1 - t * t * 0.85) * 0.99;
+      poly(circ(cx, cy, rr, z1 + 0.3 + dh * Math.sqrt(1 - t * t), 44), mix(capDark, capLight, 0.35 + t * 0.4), null);
+    }
+    var zt = z1 + 0.3 + dh;
+    if (o.lab) capLabel(cx, cy, zt, rthr * (o.labW || 1.5) * 0.8, o.lab);
+    var cc = P(cx, cy, zt), hl = P(cx - rthr * 0.35, cy + rthr * 0.4, zt);
+    gr = g.createRadialGradient(hl[0], hl[1], 0.5, cc[0], cc[1], rthr * 1.05);
+    gr.addColorStop(0, 'rgba(255,255,255,0.4)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.08)'); gr.addColorStop(0.75, 'rgba(0,0,0,0.12)'); gr.addColorStop(1, 'rgba(0,0,0,0.5)');
+    poly(circ(cx, cy, rthr * 0.98, zt - dh * 0.3, 44), gr, null);
+    specular(cx - rthr * 0.3, cy + rthr * 0.35, zt + 0.5, rthr * 0.42, o.chrome ? 0.9 : 0.6);
+  }
+
+  function drawHead() {
+    var x0 = 100, x1 = 262, y0 = 100, y1 = 140;
+    poly(box(x0, y0, x1, y1, 0), '#0d0f13', '#2b2f36', 1.5);
+    poly(box(108, 106, 178, 134, 0.3), '#06110f', '#1f2a28', 1);
+    var lv = [env.bass, env.bass * 0.6 + env.mid * 0.4, env.mid, env.mid * 0.4 + env.treble * 0.6, env.treble];
+    g.fillStyle = C.accent;
+    for (var i = 0; i < 5; i++) {
+      var bx = 114 + i * 12, hgt = 3 + Math.min(1, lv[i]) * 19;
+      poly(box(bx, 110, bx + 8, 110 + hgt, 0.6), C.accent);
+    }
+    var k = P(198, 120, 1);
+    g.beginPath(); g.arc(k[0], k[1], 9, 0, 7); g.fillStyle = '#1a1d23'; g.fill();
+    g.strokeStyle = '#3a3f48'; g.lineWidth = 1.2; g.stroke();
+    for (var d = 0; d < 4; d++) {
+      var q = P(222 + d * 11, 120, 1);
+      g.beginPath(); g.arc(q[0], q[1], 2.4, 0, 7); g.fillStyle = '#2f343c'; g.fill();
+    }
+  }
+
+  function drawHorn() {
+    var x0 = 112, x1 = 250, y0 = -90, y1 = -8;
+    poly(box(x0, y0, x1, y1, 0), '#dfe2e6', '#8b929c', 1.5);
+    var o = [[132, -70, 218, -28, -2]];
+    var ox0 = 132, ox1 = 230, oy0 = -72, oy1 = -26, bx0 = 160, bx1 = 202, by0 = -56, by1 = -42, zb = -70;
+    poly([P(ox0, oy1, -2), P(ox1, oy1, -2), P(bx1, by1, zb), P(bx0, by1, zb)], '#9aa0a8');
+    poly([P(ox0, oy0, -2), P(ox1, oy0, -2), P(bx1, by0, zb), P(bx0, by0, zb)], '#eceff2');
+    poly([P(ox0, oy1, -2), P(ox0, oy0, -2), P(bx0, by0, zb), P(bx0, by1, zb)], '#c3c8ce');
+    poly([P(ox1, oy1, -2), P(ox1, oy0, -2), P(bx1, by0, zb), P(bx1, by1, zb)], '#80868f');
+    poly(box(bx0, by0, bx1, by1, zb), '#2a2d33', '#1a1d22', 1);
+  }
+
+  function strip(ax, az, bx, bz, wd, y) {
+    var dx = bx - ax, dz = bz - az, l = Math.sqrt(dx * dx + dz * dz);
+    var px = -dz / l * wd / 2, pz = dx / l * wd / 2;
+    poly([P(ax + px, y, az + pz), P(bx + px, y, bz + pz), P(bx - px, y, bz - pz), P(ax - px, y, az - pz)], '#d2cfc7', '#9c998f', 1.2);
+  }
+
+  /* ---------- ambientes: palco, porta-malas e sala ---------- */
+  var VIEWS = { palco: { sc: 1, tx: 0, ty: 0 }, carro: { sc: 1, tx: 0, ty: 0 }, sala: { sc: 0.72, tx: 153, ty: 10 } };
+  var scene = 'palco';
+
+  function pictureFrame(x, y, w, h, ang, c1, c2) {
+    g.save(); g.translate(x + w / 2, y + h / 2); g.rotate(ang);
+    g.fillStyle = '#d9d2c6'; g.fillRect(-w / 2 - 5, -h / 2 - 5, w + 10, h + 10);
+    var gr = g.createLinearGradient(0, -h / 2, 0, h / 2); gr.addColorStop(0, c1); gr.addColorStop(1, c2);
+    g.fillStyle = gr; g.fillRect(-w / 2, -h / 2, w, h);
+    g.fillStyle = 'rgba(255,255,255,0.18)';
+    g.beginPath(); g.moveTo(-w / 2, h / 2); g.lineTo(-w * 0.1, -h * 0.1); g.lineTo(w * 0.15, h * 0.25); g.lineTo(w * 0.32, -h * 0.02); g.lineTo(w / 2, h / 2); g.closePath(); g.fill();
+    g.restore();
+  }
+
+  function drawBackdrop() {
+    var t = performance.now() / 1000;
+    if (scene === 'carro') {
+      var wl = g.createLinearGradient(0, 0, 0, 430);
+      wl.addColorStop(0, '#171c24'); wl.addColorStop(1, '#2a313c');
+      g.fillStyle = wl; g.fillRect(0, 0, VW, 430);
+      var fg = g.createLinearGradient(0, 430, 0, VH);
+      fg.addColorStop(0, '#262b33'); fg.addColorStop(1, '#14171c');
+      g.fillStyle = fg; g.fillRect(0, 430, VW, VH - 430);
+      g.strokeStyle = 'rgba(255,255,255,0.05)'; g.lineWidth = 2; g.beginPath();
+      for (var i = 0; i < 4; i++) { g.moveTo(0, 452 + i * 38); g.lineTo(VW, 452 + i * 38); }
+      g.stroke();
+      g.fillStyle = C.accent; g.globalAlpha = 0.3 + env.bass * 0.4; g.fillRect(60, 22, 700, 4); g.globalAlpha = 1;
+      return;
+    }
+    if (scene === 'sala') {
+      var jit = reduce ? 0 : env.bass * 0.035 * Math.sin(t * 38);
+      g.fillStyle = '#2b323f'; g.fillRect(0, 0, VW, 404);
+      var lg = g.createRadialGradient(110, 330, 10, 110, 330, 380);
+      lg.addColorStop(0, 'rgba(255,200,120,0.22)'); lg.addColorStop(1, 'rgba(255,200,120,0)');
+      g.fillStyle = lg; g.fillRect(0, 0, VW, 404);
+      g.fillStyle = '#d9d2c6'; g.fillRect(14, 36, 108, 196);
+      var sky = g.createLinearGradient(0, 42, 0, 226); sky.addColorStop(0, '#16233d'); sky.addColorStop(1, '#3d6088');
+      g.fillStyle = sky; g.fillRect(21, 43, 94, 182);
+      g.fillStyle = '#d9d2c6'; g.fillRect(66, 43, 4, 182); g.fillRect(21, 130, 94, 4);
+      pictureFrame(692, 214, 72, 92, jit, '#1d3a52', '#4f8ea3');
+      pictureFrame(704, 330, 48, 48, -jit * 1.3, '#5b3d52', '#c98b6b');
+      g.fillStyle = '#20252e'; g.fillRect(0, 392, VW, 12);
+      for (var r = 0; r < 7; r++) {
+        g.fillStyle = r % 2 ? '#432e21' : '#4a3426';
+        g.fillRect(0, 404 + r * 26, VW, 26);
+      }
+      g.strokeStyle = 'rgba(0,0,0,0.28)'; g.lineWidth = 1; g.beginPath();
+      for (var pr = 0; pr < 7; pr++) for (var px = (pr % 2 ? 60 : 0); px < VW; px += 140) { g.moveTo(px, 404 + pr * 26); g.lineTo(px, 404 + (pr + 1) * 26); }
+      g.stroke();
+      var gl = g.createLinearGradient(0, 404, 0, VH); gl.addColorStop(0, 'rgba(255,255,255,0.08)'); gl.addColorStop(1, 'rgba(0,0,0,0.28)');
+      g.fillStyle = gl; g.fillRect(0, 404, VW, VH - 404);
+      var bm = g.createLinearGradient(115, 130, 520, 430); bm.addColorStop(0, 'rgba(190,210,255,0.17)'); bm.addColorStop(1, 'rgba(190,210,255,0)');
+      g.fillStyle = bm; g.beginPath(); g.moveTo(115, 46); g.lineTo(115, 226); g.lineTo(600, 440); g.lineTo(470, 404); g.closePath(); g.fill();
+      return;
+    }
+    g.fillStyle = C.stage; g.fillRect(0, 0, VW, VH);
+    var fl = g.createLinearGradient(0, 360, 0, VH);
+    fl.addColorStop(0, C.stage); fl.addColorStop(1, C.floor);
+    g.fillStyle = fl; g.fillRect(0, 360, VW, VH - 360);
+    var wg = g.createRadialGradient(330, 210, 10, 330, 210, 430);
+    wg.addColorStop(0, 'rgba(120,150,190,0.12)'); wg.addColorStop(1, 'rgba(120,150,190,0)');
+    g.fillStyle = wg; g.fillRect(0, 0, VW, 360);
+    var sh = g.createRadialGradient(300, 480, 20, 300, 480, 380);
+    sh.addColorStop(0, 'rgba(150,185,230,0.18)'); sh.addColorStop(1, 'rgba(150,185,230,0)');
+    g.fillStyle = sh; g.fillRect(0, 360, VW, VH - 360);
+    g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(0, 360, VW, 1.5);
+  }
+
+  // porta-malas visto por dentro: piso, banco traseiro, lateral e caixa de roda
+  function drawTrunk(h, shx, shy) {
+    var X0 = -370, X1 = 380, Z0 = -350, Z1 = 80, T = 260;
+    g.save(); g.translate(shx * 0.6, shy * 0.6);
+    poly([P(X0, -h, Z1), P(X1, -h, Z1), P(X1, -h, Z0), P(X0, -h, Z0)], '#3a404a');
+    g.strokeStyle = '#4a515d'; g.lineWidth = 1.5; g.beginPath();
+    for (var x = X0 + 40; x < X1; x += 50) { var a = P(x, -h, Z1), b = P(x, -h, Z0); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); }
+    g.stroke();
+    poly([P(X1, -h, Z1), P(X1, -h, Z0), P(X1, -h - 30, Z0), P(X1, -h - 30, Z1)], '#262b33');
+    poly([P(X0, -h, Z0), P(X1, -h, Z0), P(X1, -h + T, Z0), P(X0, -h + T, Z0)], '#2e343d');
+    g.strokeStyle = '#444b57'; g.lineWidth = 1.5; g.beginPath();
+    for (var k = 1; k < 4; k++) { var s1 = P(X0, -h + k * 65, Z0), s2 = P(X1, -h + k * 65, Z0); g.moveTo(s1[0], s1[1]); g.lineTo(s2[0], s2[1]); }
+    for (var q = X0 + 95; q < X1; q += 95) { var v1 = P(q, -h, Z0), v2 = P(q, -h + T, Z0); g.moveTo(v1[0], v1[1]); g.lineTo(v2[0], v2[1]); }
+    g.stroke();
+    poly([P(X0, -h + T - 26, Z0 + 1), P(X1, -h + T - 26, Z0 + 1), P(X1, -h + T, Z0 + 1), P(X0, -h + T, Z0 + 1)], '#3c424c');
+    poly([P(X0, -h, Z1), P(X0, -h, Z0), P(X0, -h + T, Z0), P(X0, -h + T, Z1)], '#323842');
+    var la = 0.35 + env.bass * 0.6;
+    poly([P(X0 + 1, -h + 150, -240), P(X0 + 1, -h + 150, -150), P(X0 + 1, -h + 196, -150), P(X0 + 1, -h + 196, -240)], 'rgba(224,62,62,' + la.toFixed(2) + ')', '#5a1a1a', 1);
+    poly([P(X0, -h, -90), P(-295, -h, -90), P(-295, -h + 95, -90), P(X0, -h + 95, -90)], '#2a2f37');
+    poly([P(-295, -h, -90), P(-295, -h, -270), P(-295, -h + 95, -270), P(-295, -h + 95, -90)], '#22262d');
+    poly([P(X0, -h + 95, -270), P(-295, -h + 95, -270), P(-295, -h + 95, -90), P(X0, -h + 95, -90)], '#3b414b');
+    poly([P(X0, -h - 50, 112), P(X1, -h - 50, 112), P(X1, -h, 112), P(X0, -h, 112)], '#1d2128');
+    poly([P(X0, -h, Z1), P(X1, -h, Z1), P(X1, -h, 112), P(X0, -h, 112)], '#434a55');
+    g.restore();
+  }
+
+  function leaf(cx, cy, len, ang, z) {
+    var wd = len * 0.26, ca = Math.cos(ang), sa = Math.sin(ang), pts = [];
+    for (var i = 0; i < 20; i++) {
+      var t = i / 20 * Math.PI * 2, lx = (Math.cos(t) + 1) * len / 2, ly = Math.sin(t) * wd;
+      pts.push(P(cx + lx * ca - ly * sa, cy + lx * sa + ly * ca, z));
+    }
+    poly(pts, '#3f8a55', '#2a6a3d', 1);
+  }
+
+  function drawDresser(h) {
+    var xr = 335, zf = 35, zb = -285, Hd = 240, y0 = -h - Hd;
+    var lp = P(-520, y0 + 330, -200);
+    var lg = g.createRadialGradient(lp[0], lp[1], 6, lp[0], lp[1], 190);
+    var ga = 0.3 + env.bass * 0.3;
+    lg.addColorStop(0, 'rgba(255,205,120,' + ga.toFixed(2) + ')'); lg.addColorStop(1, 'rgba(255,205,120,0)');
+    g.fillStyle = lg; g.fillRect(lp[0] - 190, lp[1] - 190, 380, 380);
+    poly(box(-545, y0, -495, y0 + 10, -200), '#1b1d22');
+    poly(box(-523, y0, -517, y0 + 320, -200), '#1b1d22');
+    poly([P(-558, y0 + 292, -200), P(-482, y0 + 292, -200), P(-498, y0 + 362, -200), P(-542, y0 + 362, -200)], '#f2d9a6', '#b89a5e', 1);
+
+    poly([P(-xr - 30, y0, zf + 30), P(xr + 60, y0, zf + 30), P(xr + 60, y0, zb - 10), P(-xr - 30, y0, zb - 10)], 'rgba(0,0,0,0.35)');
+    [[-xr + 10, -xr + 32], [xr - 32, xr - 10]].forEach(function (p) { poly(box(p[0], y0 - 34, p[1], y0, zf - 6), '#3a2418', '#24150d', 1); });
+    poly([P(xr, -h, zf), P(xr, -h, zb), P(xr, y0, zb), P(xr, y0, zf)], '#47291c', '#2a170f', 1.5);
+    poly([P(-xr, -h, zb), P(xr, -h, zb), P(xr, -h, zf), P(-xr, -h, zf)], '#7a4f36', '#2a170f', 1.5);
+    poly([P(-xr, -h, zf), P(xr, -h, zf), P(xr, y0, zf), P(-xr, y0, zf)], '#5d3a29', '#2a170f', 1.5);
+    for (var i = 0; i < 3; i++) {
+      var yt = -h - 16 - i * 74, yb = yt - 64, ym = (yt + yb) / 2;
+      poly(box(-xr + 18, yb, xr - 18, yt, zf + 0.5), '#6b4431', '#3b2418', 1.2);
+      poly(box(-34, ym - 3, 34, ym + 3, zf + 2), '#c9a35b', '#8a6c33', 1);
+    }
+
+    g.lineWidth = 1;
+    g.strokeStyle = 'rgba(25,10,2,0.13)'; g.beginPath();
+    for (i = 0; i < 3; i++) {
+      var yt2 = -h - 16 - i * 74;
+      for (var q = 0; q < 7; q++) {
+        var yy = yt2 - 62 + 60 * (q + 0.5) / 7, wob = 3 * Math.sin(q * 2.3 + i), p1 = P(-xr + 24, yy + wob, zf + 0.6), p2 = P(xr - 24, yy - wob, zf + 0.6);
+        g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]);
+      }
+    }
+    for (var k2 = 0; k2 < 16; k2++) {
+      var xx = -xr + 20 + (2 * xr - 40) * (k2 + 0.5) / 16, p3 = P(xx, -h, zf - 3), p4 = P(xx + 5 * Math.sin(k2 * 1.7), -h, zb + 3);
+      g.moveTo(p3[0], p3[1]); g.lineTo(p4[0], p4[1]);
+    }
+    g.stroke();
+    var tg = g.createLinearGradient(P(-xr, -h, zf)[0], P(-xr, -h, zf)[1], P(xr, -h, zb)[0], P(xr, -h, zb)[1]);
+    tg.addColorStop(0, 'rgba(255,230,200,0.16)'); tg.addColorStop(1, 'rgba(0,0,0,0.12)');
+    poly([P(-xr, -h, zb), P(xr, -h, zb), P(xr, -h, zf), P(-xr, -h, zf)], tg, null);
+    var sway = reduce ? 0 : env.bass * 0.09 * Math.sin(performance.now() / 110);
+    poly([P(445, y0, -60), P(495, y0, -60), P(488, y0 + 55, -60), P(452, y0 + 55, -60)], '#b5603f', '#7d3f27', 1);
+    [-70, -40, -10, 18, 45, 70].forEach(function (d, n) {
+      leaf(470, y0 + 55, 90 + (n % 3) * 14, (90 + d) * Math.PI / 180 - 0.0 + sway * (n % 2 ? 1 : -1), -60);
+    });
+  }
+
+  /* ---------- modelos de caixa ---------- */
+  var model = 'classica';
+  var FLOOR = 160;   // altura do chão em relação ao centro da caixa clássica; todos os modelos pousam nele
+
+  // caixa com face direita, tampa e frente
+  function slab(x0, x1, y0, y1, z0, z1, cf, cs, ct, edge) {
+    var ym = (y0 + y1) / 2, gr, a, b, i, q;
+    // lado direito: claro perto da frente, escuro no fundo
+    a = P(x1, ym, z1); b = P(x1, ym, z0);
+    gr = g.createLinearGradient(a[0], a[1], b[0], b[1]);
+    gr.addColorStop(0, mix(cs, '#ffffff', 0.1)); gr.addColorStop(1, mix(cs, '#000000', 0.32));
+    poly([P(x1, y1, z1), P(x1, y1, z0), P(x1, y0, z0), P(x1, y0, z1)], gr, edge, 1.5);
+    // tampa
+    a = P(x0, y1, z1); b = P(x1, y1, z0);
+    gr = g.createLinearGradient(a[0], a[1], b[0], b[1]);
+    gr.addColorStop(0, mix(ct, '#ffffff', 0.12)); gr.addColorStop(1, mix(ct, '#000000', 0.18));
+    poly([P(x0, y1, z0), P(x1, y1, z0), P(x1, y1, z1), P(x0, y1, z1)], gr, edge, 1.5);
+    // frente
+    var f = [P(x0, y1, z1), P(x1, y1, z1), P(x1, y0, z1), P(x0, y0, z1)];
+    gr = g.createLinearGradient(f[0][0], f[0][1], f[2][0], f[2][1]);
+    gr.addColorStop(0, mix(cf, '#ffffff', 0.3));
+    gr.addColorStop(1, mix(cf, '#000000', 0.1));
+    poly(f, gr, edge, 1.5);
+    // oclusão no pé e escurecimento perto da quina
+    a = P((x0 + x1) / 2, y0, z1); b = P((x0 + x1) / 2, y1, z1);
+    gr = g.createLinearGradient(a[0], a[1], b[0], b[1]);
+    gr.addColorStop(0, 'rgba(0,0,0,0.3)'); gr.addColorStop(0.3, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(255,255,255,0.04)');
+    poly(f, gr, null);
+    a = P(x0, ym, z1); b = P(x1, ym, z1);
+    gr = g.createLinearGradient(a[0], a[1], b[0], b[1]);
+    gr.addColorStop(0, 'rgba(255,255,255,0.05)'); gr.addColorStop(0.75, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.14)');
+    poly(f, gr, null);
+    // textura (carpete ou feltro)
+    if (curTex) {
+      g.fillStyle = curTex === 'carpet' ? 'rgba(255,255,255,0.11)' : 'rgba(255,255,255,0.08)';
+      for (i = 0; i < 190; i++) { q = SPECK[i % SPECK.length]; a = P(x0 + (x1 - x0) * ((q[0] + i * 0.013) % 1), y0 + (y1 - y0) * q[1], z1 + 0.3); g.fillRect(a[0], a[1], 1.4, 1.4); }
+      for (i = 0; i < 90; i++) { q = SPECK[(i * 3) % SPECK.length]; a = P(x0 + (x1 - x0) * q[1], y1, z1 - (z1 - z0) * ((q[0] + i * 0.017) % 1)); g.fillRect(a[0], a[1], 1.4, 1.4); }
+    }
+    // quinas com brilho
+    g.lineCap = 'round'; g.lineWidth = 1.4;
+    g.strokeStyle = 'rgba(255,255,255,0.4)'; a = P(x0, y1, z1); b = P(x1, y1, z1); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,0.22)'; b = P(x0, y0, z1); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,0.14)'; a = P(x1, y1, z1); b = P(x1, y0, z1); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+  }
+  // cavidade rasa na frente: fundo, parede direita e piso (a câmera olha de cima e da esquerda)
+  function recess(x0, y0, x1, y1, dz, cBack, cSide, cFloor) {
+    poly(box(x0, y0, x1, y1, -dz), cBack);
+    poly([P(x1, y1, 0), P(x1, y1, -dz), P(x1, y0, -dz), P(x1, y0, 0)], cSide);
+    poly([P(x0, y0, 0), P(x1, y0, 0), P(x1, y0, -dz), P(x0, y0, -dz)], cFloor);
+  }
+  function stripe2(ax, ay, bx, by, wd, fill, z) {
+    var dx = bx - ax, dy = by - ay, l = Math.sqrt(dx * dx + dy * dy), px = -dy / l * wd / 2, py = dx / l * wd / 2;
+    poly([P(ax + px, ay + py, z), P(bx + px, by + py, z), P(bx - px, by - py, z), P(ax - px, ay - py, z)], fill, null);
+  }
+  function tri(a, b, c, fill, edge, z) { poly([P(a[0], a[1], z), P(b[0], b[1], z), P(c[0], c[1], z)], fill, edge, 1); }
+  function faceText(txt, x, y, size, color) {
+    var p = P(x, y, 0.8);
+    g.save();
+    g.transform(cT, -sT * sP, 0, cP, p[0], p[1]);
+    g.font = '700 ' + size + 'px Orbitron, "Segoe UI", monospace';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = color; g.fillText(txt, 0, 0);
+    g.restore();
+  }
+  function ell(cx, cy, rx, ry, z, n) {
+    var pts = [];
+    for (var i = 0; i < n; i++) { var a = i / n * Math.PI * 2; pts.push(P(cx + rx * Math.cos(a), cy + ry * Math.sin(a), z)); }
+    return pts;
+  }
+  // alto-falante oval (6x9)
+  function ovalDriver(cx, cy, rx, ry, depth, dx, ca, cb, lab) {
+    var N = 6, z0 = -4 + dx * 0.3, z1 = -depth + dx, i, u, col, c0, R = Math.max(rx, ry), conc = depth >= 0;
+    poly(ell(cx, cy, rx + 12, ry + 12, 0.5, 64), lightGrad(cx, cy, R + 12, 0.5, [[0, mix(C.frame, '#ffffff', 0.24)], [1, mix(C.frame, '#000000', 0.4)]]), '#07090c', 1.2);
+    poly(ell(cx, cy, rx, ry, 2, 64), lightGrad(cx, cy, R, 2, [[0, mix(C.surround, '#ffffff', 0.3)], [0.5, C.surround], [1, mix(C.surround, '#000000', 0.55)]]), '#343941', 1);
+    for (i = 0; i <= N; i++) {
+      u = i / N; col = mix(ca || C.coneA, cb || C.coneB, u * 0.85);
+      poly(ell(cx, cy, rx * (0.9 - 0.65 * u), ry * (0.9 - 0.65 * u), z0 + (z1 - z0) * u, 48), col, mix(col, '#ffffff', 0.1), 0.8);
+    }
+    g.save(); clipPoly(ell(cx, cy, rx * 0.9, ry * 0.9, z0, 56)); c0 = P(cx, cy, z0);
+    g.fillStyle = lightGrad(cx, cy, R, z0, conc ? [[0, 'rgba(0,0,0,0.5)'], [0.5, 'rgba(0,0,0,0)'], [1, 'rgba(255,255,255,0.2)']] : [[0, 'rgba(255,255,255,0.22)'], [0.55, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.48)']]);
+    g.fillRect(c0[0] - 3 * R, c0[1] - 3 * R, 6 * R, 6 * R);
+    g.restore();
+    poly(ell(cx, cy, rx * 0.2, ry * 0.2, z1 + 2, 24), '#aeb6c1', '#6e7681', 1);
+    poly(box(cx - rx * 0.55, cy - 3, cx + rx * 0.55, cy + 3, z1 + 6), lightGrad(cx, cy, rx * 0.55, z1 + 6, [[0, '#f4f6f8'], [1, '#808893']]), '#7b8490', 1);
+    if (lab) capLabel(cx, cy - ry * 0.55, z1 + 5, rx * 0.9, lab);
+    specular(cx - rx * 0.1, cy + 4, z1 + 7, rx * 0.4, 0.5);
+  }
+
+  /* modelo 1: clássica (branca, com woofer, dois médios, tweeter, rádio e corneta) */
+  function drawClassic(dx, dm, tdx) {
+    var w = 290, h = 160;
+    slab(-w, w, -h, h, -250, 0, C.body, C.bodySide, C.bodyTop, '#8f8c84');
+    strip(-110, -65, 30, -185, 24, h);
+    strip(30, -65, -110, -185, 24, h);
+    poly([P(w, 95, -35), P(w, 95, -75), P(w, 25, -75), P(w, 25, -35)], '#24272d', '#7d7a72', 1.2);
+    [[-272, -182], [-166, -76]].forEach(function (xr) {
+      poly(box(xr[0], -152, xr[1], -122, 0), '#08090c', '#b3b0a8', 1.5);
+      poly(box(xr[0] + 5, -147, xr[1] - 5, -127, -1), '#000000');
+    });
+    poly(box(-15, -160, 290, -122, 0.4), '#2a2d33', '#14161a', 1.5);
+    if (cfg.horn) drawHorn();
+    if (cfg.head) drawHead();
+    drawDriver(WX, WY, WR, { depth: 70, n: 9, labW: 1.7, lab: [['SHIVER', '#f2f2f2'], ['BASS 3.8', '#e0443c']] }, dx);
+    drawDriver(MX, MY1, MR, { silver: true, depth: 38, n: 6, lab: [['SNAKE', '#f2f2f2']] }, dm);
+    drawDriver(MX, MY2, MR, { silver: true, depth: 38, n: 6, lab: [['SNAKE', '#f2f2f2']] }, dm);
+    drawDriver(TX, TY, TR, { silver: true, chrome: true, depth: 22, n: 5, lab: [['JBL', '#20242a']] }, tdx);
+  }
+
+  /* modelo 2: torre (rádio no topo, médios no meio e woofer embaixo) */
+  function drawTorre(dx, dm, tdx) {
+    var w = 160, h = 220, line = '#a9a79f';
+    slab(-w, w, -h, h, -250, 0, C.body, C.bodySide, C.bodyTop, '#8f8c84');
+    // rádio, luz e relógio
+    if (cfg.head) {
+      poly(box(-76, 141, 70, 189, 0.5), '#0b0c0f', '#2b2f36', 1.5);
+      poly(box(-40, 149, 30, 181, 0.9), '#04101a', '#1b3040', 1);
+      var lv = [env.bass, env.bass * 0.7 + env.mid * 0.3, env.mid, env.mid * 0.5 + env.treble * 0.5, env.treble, env.treble * 0.8], i;
+      for (i = 0; i < 6; i++) poly(box(-37 + i * 11, 151, -31 + i * 11, 151 + 4 + Math.min(1, lv[i]) * 16, 1), C.accent);
+      var tx = (rd.pen && rd.source === 'usb') ? 'USB ' + pad(rd.idx + 1, 3) : 'FM 87.5';
+      faceText(tx, -5, 172, 9, C.accent);
+      var kp = P(-57, 165, 1);
+      g.beginPath(); g.arc(kp[0], kp[1], 10, 0, 7); g.fillStyle = '#1a1d23'; g.fill(); g.strokeStyle = '#3a3f48'; g.lineWidth = 1.2; g.stroke();
+      for (i = 0; i < 3; i++) { var q = P(44 + i * 9, 165, 1); g.beginPath(); g.arc(q[0], q[1], 2.4, 0, 7); g.fillStyle = '#2f343c'; g.fill(); }
+    }
+    poly(box(-138, 160, -114, 184, 0.5), mix(C.accent, '#ffffff', 0.1), '#0e2a55', 1);
+    poly(box(84, 156, 138, 186, 0.5), '#150709', '#2b1215', 1);
+    var d = new Date();
+    faceText(pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2), 111, 171, 15, 'rgba(255,70,70,' + (0.7 + env.bass * 0.3).toFixed(2) + ')');
+    // cavidades do meio
+    recess(-146, 2, -38, 132, 16, '#e1e1dd', '#b7b7b2', '#c9c9c4');
+    recess(-26, 2, 146, 132, 16, '#e1e1dd', '#b7b7b2', '#c9c9c4');
+    poly(box(-124, 20, -52, 112, -2), '#101114', '#2b2f36', 1.2);
+    g.strokeStyle = '#e9e9e6'; g.lineWidth = 2.4; g.lineCap = 'round'; g.beginPath();
+    var a1 = P(-104, 74, -3), a2 = P(-72, 52, -3), a3 = P(-104, 52, -3), a4 = P(-72, 74, -3);
+    g.moveTo(a1[0], a1[1]); g.lineTo(a2[0], a2[1]); g.moveTo(a3[0], a3[1]); g.lineTo(a4[0], a4[1]); g.stroke();
+    drawDriver(62, 67, 40, { silver: true, depth: 34, n: 6, labW: 1.7, lab: [['SELENIUM', '#f2f2f2']] }, dm);
+    // prateleira e baixo
+    poly(box(-w, -32, w, -2, 0.8), mix(C.body, '#000000', 0.07), line, 1);
+    recess(-150, -212, 150, -34, 10, mix(C.body, '#000000', 0.12), mix(C.body, '#000000', 0.3), mix(C.body, '#000000', 0.2));
+    [[-150, -34, -92, -34, -150, -94], [150, -34, 92, -34, 150, -94], [-150, -212, -92, -212, -150, -152], [150, -212, 92, -212, 150, -152]].forEach(function (t) {
+      tri([t[0], t[1]], [t[2], t[3]], [t[4], t[5]], mix(C.body, '#ffffff', 0.2), line, 0.4);
+    });
+    drawDriver(0, -123, 74, { depth: 60, n: 9, labW: 1.7, lab: [['HAMMER', '#e8b63a'], ['3.0K', '#f2f2f2']] }, dx);
+  }
+
+  /* modelo 3: caixa azul (baffle preto, dois médios, woofer e dutos) */
+  function drawAzul(dx, dm, tdx) {
+    var w = 160, h = 220, rz = -22, edge = mix(C.body, '#000000', 0.45), i;
+    slab(-w, w, -h, h, -300, 0, C.body, C.bodySide, C.bodyTop, edge);
+    poly([P(134, 200, 0), P(134, 200, rz), P(134, -198, rz), P(134, -198, 0)], mix(C.body, '#000000', 0.4));
+    poly([P(-134, -198, 0), P(134, -198, 0), P(134, -198, rz), P(-134, -198, rz)], mix(C.body, '#000000', 0.22));
+    poly(box(-134, -198, 134, 200, rz), '#0c0d10', edge, 1);
+    g.strokeStyle = 'rgba(255,255,255,0.05)'; g.lineWidth = 1; g.beginPath();
+    for (i = -120; i <= 120; i += 17) { var s1 = P(i, 196, rz + 0.4), s2 = P(i + 4, -194, rz + 0.4); g.moveTo(s1[0], s1[1]); g.lineTo(s2[0], s2[1]); }
+    g.stroke();
+    ZO = rz;
+    drawDriver(-78, 150, 38, { silver: true, depth: 26, n: 5, lab: [['Audiobahn', '#f2f2f2']] }, dm);
+    ovalDriver(80, 148, 56, 40, 28, dm, null, null, [['Audiobahn', '#f2f2f2']]);
+    drawDriver(0, -24, 104, { depth: 70, n: 9, labW: 1.8, lab: [['AUDIO LABS', '#f2f2f2']] }, dx);
+    [[-130, -64], [64, 130]].forEach(function (xr) {
+      poly(box(xr[0], -196, xr[1], -172, 0), '#040507', '#2a2d33', 1.2);
+    });
+    for (i = 0; i < 5; i++) {
+      var k = P(-36 + i * 18, -184, 1);
+      g.beginPath(); g.arc(k[0], k[1], 7, 0, 7); g.fillStyle = '#c5ccd6'; g.fill(); g.strokeStyle = '#6e7681'; g.lineWidth = 1.2; g.stroke();
+      g.beginPath(); g.arc(k[0], k[1], 3, 0, 7); g.fillStyle = '#5a616c'; g.fill();
+    }
+    ZO = 0;
+  }
+
+  /* modelo 4: dupla 4 vias (em cima 4 médios e 2 tweeters, embaixo 2 woofers) */
+  function drawDupla(dx, dm, tdx) {
+    var w = 320, grey = '#7a8089', blk = '#15171a', wht = C.body, silverCone = { ca: '#eef0f3', cb: '#7d848d', cd: '#22252a', cl: '#555b64' };
+    // caixa de baixo
+    slab(-w, w, -265, -3, -250, 0, grey, C.bodySide, C.bodyTop, '#2a2d33');
+    tri([-105, -6], [105, -6], [0, -110], wht, '#2a2d33', 0.4);
+    tri([-70, -10], [70, -10], [0, -84], '#33373d', null, 0.5);
+    tri([-318, -262], [-196, -262], [-318, -172], wht, '#2a2d33', 0.4);
+    tri([318, -262], [196, -262], [318, -172], wht, '#2a2d33', 0.4);
+    tri([-318, -8], [-246, -8], [-318, -64], '#2f3338', null, 0.4);
+    tri([318, -8], [246, -8], [318, -64], '#2f3338', null, 0.4);
+    stripe2(-312, -204, -240, -252, 14, blk, 0.6);
+    stripe2(312, -204, 240, -252, 14, blk, 0.6);
+    drawDriver(-152, -132, 112, { depth: 80, n: 9, labW: 1.75, lab: [['JBL', '#e8553b'], ['TORNADO', '#f2f2f2'], ['2200', '#f2f2f2']], ca: silverCone.ca, cb: silverCone.cb, cd: silverCone.cd, cl: silverCone.cl }, dx);
+    drawDriver(152, -132, 112, { depth: 80, n: 9, labW: 1.75, lab: [['JBL', '#e8553b'], ['TORNADO', '#f2f2f2'], ['2200', '#f2f2f2']], ca: silverCone.ca, cb: silverCone.cb, cd: silverCone.cd, cl: silverCone.cl }, dx);
+    // caixa de cima
+    slab(-w, w, 3, 265, -250, 0, wht, C.bodySide, C.bodyTop, '#8f8c84');
+    poly([P(-w, 3, 0.2), P(-w, 96, 0.2), P(-160, 3, 0.2)], grey);
+    poly([P(w, 3, 0.2), P(w, 96, 0.2), P(160, 3, 0.2)], grey);
+    tri([-150, 265], [150, 265], [0, 92], '#6d727a', null, 0.3);
+    stripe2(-262, 248, -6, 98, 26, blk, 0.5);
+    stripe2(262, 248, 6, 98, 26, blk, 0.5);
+    poly(box(-114, 170, -44, 254, 0.7), blk, '#2b2f36', 1);
+    poly(box(44, 170, 114, 254, 0.7), blk, '#2b2f36', 1);
+    poly(box(-86, 100, -70, 170, 0.7), '#1d2024');
+    poly(box(70, 100, 86, 170, 0.7), '#1d2024');
+    drawDriver(-79, 213, 30, { silver: true, chrome: true, depth: 22, n: 5, lab: [['JBL', '#20242a']] }, tdx);
+    drawDriver(79, 213, 30, { silver: true, chrome: true, depth: 22, n: 5, lab: [['SELENIUM', '#20242a']] }, tdx);
+    [[-234, 196], [-234, 62], [234, 196], [234, 62]].forEach(function (c) {
+      drawDriver(c[0], c[1], 44, { silver: true, depth: 30, n: 5, lab: [['JBL', '#f2f2f2']] }, dm);
+    });
+  }
+
+  // alto-falante oval normal, liso: cone preto sem anéis, aro preto e cúpula com o nome
+  function smoothOval(cx, cy, rx, ry, dm) {
+    var m = dm * 0.7, z = -6 + m * 0.8, sc = 0.9 + m * 0.01, c, gr;
+    poly(ell(cx, cy, rx + 9, ry + 9, 0.5, 56), lightGrad(cx, cy, ry + 9, 0.5, [[0, '#3a3e46'], [1, '#08090b']]), '#000', 1);
+    // borracha (fica parada) e cone (vai e volta)
+    poly(ell(cx, cy, rx + 2, ry + 2, 1, 56), lightGrad(cx, cy, ry + 2, 1, [[0, '#3a3d44'], [1, '#101114']]), '#2f333a', 1);
+    poly(ell(cx, cy, rx * 0.93, ry * 0.93, 0.8, 56), '#0a0b0d', null);
+    c = P(cx, cy, z);
+    gr = g.createRadialGradient(c[0] - rx * 0.25, c[1] - ry * 0.2, 2, c[0], c[1], ry * 1.05);
+    gr.addColorStop(0, '#50545d'); gr.addColorStop(0.45, '#25282e'); gr.addColorStop(1, '#07080a');
+    poly(ell(cx, cy, rx * sc, ry * sc, z, 56), gr, 'rgba(255,255,255,0.08)', 1);
+    poly(ell(cx, cy, rx * sc * 0.62, ry * sc * 0.62, z - 2, 48), 'rgba(0,0,0,0.25)', 'rgba(255,255,255,0.06)', 1);
+    poly(ell(cx, cy, rx * 0.34 * sc, rx * 0.34 * sc, z - 4, 36), lightGrad(cx, cy, rx * 0.34, z, [[0, '#5e646f'], [1, '#14161a']]), '#0a0b0d', 1);
+    specular(cx - rx * 0.3, cy + ry * 0.3, z, rx * 0.5, 0.35);
+  }
+  // corneta azul de vidro com aro cromado (só enfeite)
+  function blueHorn(cx, cy, r) {
+    var N = 8, i, u, c0;
+    poly(circ(cx, cy, r + 10, 0.8, 56), metalFill(cx, cy, 0.8, '#c9ced6', 0.6), '#4a5058', 1.2);
+    poly(circ(cx, cy, r + 3, 1, 56), '#14161a', '#05060a', 1);
+    for (i = 0; i <= N; i++) {
+      u = i / N;
+      poly(circ(cx + 2 * u, cy, r * (1 - 0.6 * u), -2 - 34 * u, 48), mix('#7fa6ff', '#0b1c5a', Math.pow(u, 0.7)), null);
+    }
+    g.save(); clipPoly(circ(cx, cy, r, 1, 56)); c0 = P(cx, cy, 0);
+    g.fillStyle = lightGrad(cx, cy, r, 0, [[0, 'rgba(255,255,255,0.5)'], [0.45, 'rgba(255,255,255,0)'], [1, 'rgba(0,0,0,0.45)']]);
+    g.fillRect(c0[0] - 3 * r, c0[1] - 3 * r, 6 * r, 6 * r); g.restore();
+    specular(cx - r * 0.3, cy + r * 0.4, -3, r * 0.7, 0.7);
+    glowSpot(cx, cy, -10, r * 1.2, '#8fb2ff', 0.25);
+  }
+
+  /* modelo 5: paredão LED (base preta com duas câmaras octogonais, prateleira com rádio e cornetas em cima) */
+  function drawLed(dx, dm, tdx) {
+    var w = 310, wht = '#ecebe8', blk = '#14161a', glow = 0.45 + env.bass * 0.55, i, k;
+    // base preta
+    slab(-w, w, -260, 0, -250, 0, C.body, C.bodySide, C.bodyTop, '#05060a');
+    // câmaras octogonais brancas com fita de LED e woofer Vulcano invertido
+    [-150, 150].forEach(function (cx) {
+      var o0 = octPts(cx, -130, 138, 0.8), o1 = octPts(cx, -130, 138 * 0.84, -50), kk, kn, lt;
+      poly(octPts(cx, -130, 145, 0.6), '#f6f6f4', '#9aa0a8', 1.2);
+      poly(o0, '#f1f2f3', '#aab0b8', 1.2);
+      for (kk = 0; kk < 8; kk++) {
+        kn = (kk + 1) % 8; lt = Math.cos(Math.PI / 8 + kk * Math.PI / 4 + Math.PI / 8 - 2.2) * 0.5 + 0.5;
+        poly([o0[kk], o0[kn], o1[kn], o1[kk]], mix(mix('#7c88a8', C.accent, 0.6), '#ffffff', lt * 0.85), 'rgba(0,0,0,0.2)', 0.8);
+      }
+      poly(o1, mix('#eef3ff', C.accent, 0.35), '#9aa0a8', 1);
+      // fita de LED nas quinas do fundo
+      g.strokeStyle = mix(C.accent, '#ffffff', 0.6); g.lineWidth = 3.4; g.globalAlpha = Math.min(1, (glow + 0.2) * ledK()); g.beginPath();
+      g.moveTo(o1[0][0], o1[0][1]); for (kk = 1; kk < 8; kk++) g.lineTo(o1[kk][0], o1[kk][1]); g.closePath(); g.stroke(); g.globalAlpha = 1;
+      glowSpot(cx, -130, -20, 215, C.accent, 0.5 * (0.55 + env.bass * 0.8));
+      ZO = -50; vulcanoDriver(cx, -130, 96, dx); ZO = 0;
+    });
+    // prateleira branca que sai da frente, com apoio triangular
+    slab(-w - 6, w + 6, 0, 20, -250, 22, wht, '#c9c7c2', '#f6f5f1', '#9c998f');
+    tri([-70, 0], [70, 0], [0, -72], wht, '#9c998f', 0.9);
+    poly(box(-44, -32, -12, -8, 1.1), '#2a2d33');
+    poly(box(12, -32, 44, -8, 1.1), '#2a2d33');
+    // caixa de cima: cornetas, tweeters e médios azuis
+    slab(-130, 130, 16, 62, -250, -120, wht, '#c9c7c2', '#f6f5f1', '#9c998f');
+    slab(-125, 125, 62, 232, -210, 0, wht, '#c9c7c2', '#f6f5f1', '#9c998f');
+    poly(box(-125, 62, 125, 232, 0.2), '#f3f2ef', '#9c998f', 1);
+    // janela da frente: dois alto-falantes pretos, divisória e moldura em relevo cobrindo as bordas deles
+    poly(box(-110, 78, 110, 218, 0.4), '#07080b', '#05060a', 1);
+    [-68, 68].forEach(function (mx) {
+      g.save(); clipPoly(box(-110, 78, 110, 218, 0.5));
+      smoothOval(mx, 148, 46, 54, dm);
+      g.restore();
+    });
+    // LED por dentro da caixa, no alto da janela (acende com o grave e ilumina os cones)
+    var lk = ledK(), la = Math.min(1, (0.55 + env.bass * 0.7) * lk);
+    g.save(); clipPoly(box(-110, 78, 110, 218, 0.5));
+    glowSpot(0, 214, 0.6, 120, C.accent, 0.5 * (0.5 + env.bass * 0.8));
+    glowSpot(-60, 206, 0.6, 70, C.accent, 0.35 * (0.5 + env.bass * 0.8));
+    glowSpot(60, 206, 0.6, 70, C.accent, 0.35 * (0.5 + env.bass * 0.8));
+    poly(box(-108, 210, 108, 216, 0.7), mix(C.accent, '#ffffff', 0.55), null);
+    g.save(); g.globalAlpha = Math.min(1, la); poly(box(-108, 210, 108, 216, 0.8), '#ffffff', null); g.restore();
+    g.restore();
+    // divisória central em relevo (peça de verdade, sai da frente)
+    slab(-14, 14, 70, 226, -40, 12, '#f3f2ef', '#c9c7c2', '#f6f5f1', '#9c998f');
+    stripe2(0, 214, 0, 176, 22, '#c3262d', 12.6); stripe2(0, 152, 0, 116, 22, '#15171a', 12.6);
+    poly([P(-11, 178, 12.8), P(0, 164, 12.8), P(11, 178, 12.8), P(11, 190, 12.8), P(0, 176, 12.8), P(-11, 190, 12.8)], '#c3262d', null);
+    // moldura grossa em volta: cobre as laterais, o topo e a base dos alto-falantes
+    slab(-125, -110, 62, 232, -30, 6, '#f3f2ef', '#c9c7c2', '#f6f5f1', '#9c998f');
+    slab(110, 125, 62, 232, -30, 6, '#f3f2ef', '#c9c7c2', '#f6f5f1', '#9c998f');
+    slab(-125, 125, 218, 232, -30, 6, '#f3f2ef', '#c9c7c2', '#f6f5f1', '#9c998f');
+    slab(-125, 125, 62, 78, -30, 6, '#f3f2ef', '#c9c7c2', '#f6f5f1', '#9c998f');
+    var horn = { silver: true, depth: -5, n: 6, mv: 0.3, ca: '#5b8cf0', cb: '#14275e', cd: '#c9ced6', cl: '#f1f3f6' };
+    // bases (berços) que seguram as cornetas e os tweeters em cima da prateleira
+    function cradle(x, r, top) {
+      slab(x - r - 12, x + r + 12, 20, 34, -110, 18, wht, '#c9c7c2', '#f6f5f1', '#9c998f');
+      slab(x - r - 12, x - r + 4, 34, top, -90, 12, wht, '#c9c7c2', '#f6f5f1', '#9c998f');
+      slab(x + r - 4, x + r + 12, 34, top, -90, 12, wht, '#c9c7c2', '#f6f5f1', '#9c998f');
+    }
+    cradle(-248, 50, 112); cradle(248, 50, 112); cradle(-160, 34, 92); cradle(160, 34, 92);
+    blueHorn(-248, 94, 46); blueHorn(248, 94, 46);
+    drawDriver(-160, 80, 34, { silver: true, chrome: true, depth: -4, n: 5, mv: 0.4, lab: [['JBL', '#20242a']] }, tdx);
+    drawDriver(160, 80, 34, { silver: true, chrome: true, depth: -4, n: 5, mv: 0.4, lab: [['JBL', '#20242a']] }, tdx);
+    // rádio na prateleira (aparelho de verdade, com corpo e fios atrás)
+    if (cfg.head) {
+      g.strokeStyle = '#c3262d'; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath();
+      var w0 = P(40, 24, -70), w1 = P(90, 16, -110), w2 = P(140, 20, -150); g.moveTo(w0[0], w0[1]); g.quadraticCurveTo(w1[0], w1[1] + 8, w2[0], w2[1]); g.stroke();
+      g.strokeStyle = '#14161a'; g.beginPath(); w0 = P(10, 24, -70); w1 = P(-20, 18, -120); w2 = P(-60, 20, -160); g.moveTo(w0[0], w0[1]); g.quadraticCurveTo(w1[0], w1[1] + 8, w2[0], w2[1]); g.stroke();
+      slab(-72, 72, 22, 54, -80, 0, '#2a2d33', '#16181c', '#4a4e57', '#07080a');
+      poly(box(-72, 22, 72, 54, 0.6), '#0b0c0f', '#2b2f36', 1.5);
+      poly(box(-24, 29, 40, 48, 0.9), '#04101a', '#1b3040', 1);
+      var lv = [env.bass, env.mid, env.treble, env.mid * 0.6, env.bass * 0.5], q;
+      for (q = 0; q < 5; q++) poly(box(-21 + q * 12, 31, -15 + q * 12, 31 + 3 + Math.min(1, lv[q]) * 8, 1.2), C.accent);
+      faceText((rd.pen && rd.source === 'usb') ? 'USB ' + pad(rd.idx + 1, 3) : 'FM 87.5', 8, 42, 6.5, C.accent);
+      var kp = P(-48, 38, 1.2); g.beginPath(); g.arc(kp[0], kp[1], 8, 0, 7); g.fillStyle = '#1a1d23'; g.fill(); g.strokeStyle = '#3a3f48'; g.lineWidth = 1; g.stroke();
+    }
+  }
+
+  /* modelo 6: caixa carpete (woofer grande, 4 LEDs, cornetas prata paradas e rádio solto em cima) */
+  var SPECK = (function () { var a = [], r = 7, i; for (i = 0; i < 170; i++) { r = (r * 16807) % 2147483647; var x = r / 2147483647; r = (r * 16807) % 2147483647; a.push([x, r / 2147483647]); } return a; })();
+  function capsule(cx, cy, len, wd, ang, fill, z) {
+    var pts = [], ca = Math.cos(ang), sa = Math.sin(ang), i, t, lx, ly;
+    for (i = 0; i < 24; i++) { t = i / 24 * Math.PI * 2; lx = len / 2 * Math.cos(t); ly = wd / 2 * Math.sin(t); pts.push(P(cx + lx * ca - ly * sa, cy + lx * sa + ly * ca, z)); }
+    poly(pts, fill, null);
+  }
+  // corneta de metal (só enfeite e duto, não mexe com o som)
+  function hornBell(cx, cy, rx, ry) {
+    var N = 6, i, u, col;
+    poly(ell(cx, cy, rx + 7, ry + 7, 0.6, 48), C.silver, '#6e7681', 1);
+    for (i = 0; i <= N; i++) {
+      u = i / N; col = mix(C.silver, '#232830', Math.pow(u, 0.8) * 0.9);
+      poly(ell(cx + 4 * u, cy, rx * (1 - 0.55 * u), ry * (1 - 0.55 * u), -3 - 26 * u, 44), col, null);
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 2; g.lineCap = 'round'; g.beginPath();
+    [[-0.45, 0.55], [-0.2, 0.62], [0.05, 0.6]].forEach(function (l) {
+      var a = P(cx + rx * l[0] - 6, cy + ry * l[1], -4), b = P(cx + rx * l[0] + 16, cy - ry * 0.1, -22);
+      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+    });
+    g.stroke();
+  }
+  function drawCarpete(dx, dm, tdx) {
+    var w = 260, h = 175, i, t = 0.55 + env.bass * 0.45;
+    // luz azul no chão
+    var fp = P(0, -h, 40);
+    g.save(); g.translate(fp[0], fp[1]); g.scale(1, 0.24);
+    var fg = g.createRadialGradient(0, 0, 10, 0, 0, 360);
+    fg.addColorStop(0, mix(C.accent, '#000000', 0.15)); fg.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalAlpha = 0.5 * t; g.fillStyle = fg; g.fillRect(-360, -360, 720, 720); g.restore(); g.globalAlpha = 1;
+    // caixa e carpete
+    slab(-w, w, -h, h, -300, 0, C.body, C.bodySide, C.bodyTop, '#05070a');
+    // painel lateral com tweeter, cornetas e duto
+    poly(box(-246, 84, -176, 160, 0.5), '#07080b', '#1b1e24', 1);
+    drawDriver(-211, 122, 24, { silver: true, chrome: true, depth: -4, n: 4, mv: 0.4 }, tdx);
+    hornBell(-208, 14, 36, 44);
+    hornBell(-206, -84, 36, 44);
+    poly(box(-160, -118, -146, 132, 0.5), '#050608', '#aab1bb', 1.2);
+    // woofer grande com luz azul
+    drawDriver(36, -8, 124, { depth: 52, n: 9, mv: 0.4, capR: 0.37, labW: 1.5, lab: [['Bomber', '#f2f2f2'], ['ATRACK 550', '#e0443c']], ca: '#252d4a', cb: '#05070d', cd: '#080c1e', cl: '#2b3b7c' }, dx);
+    // quatro LEDs em volta
+    [[-142, 120, 0.8], [142, 120, -0.8], [-142, -120, -0.8], [142, -120, 0.8]].forEach(function (L) {
+      glowSpot(L[0] + 36, L[1] - 8, 1, 92, C.accent, 0.62 * t);
+      capsule(L[0] + 36, L[1] - 8, 48, 20, L[2], mix(C.accent, '#ffffff', 0.55), 0.8);
+      capsule(L[0] + 36, L[1] - 8, 40, 12, L[2], '#ffffff', 0.9);
+    });
+    // rádio solto em cima da caixa
+    if (cfg.head) {
+      slab(-20, 150, h, h + 30, -225, -110, '#2a2d33', '#16181c', '#3a3e46', '#07080a');
+      poly(box(-6, h + 7, 80, h + 24, -109.5), '#04101a', '#1b3040', 1);
+      var lv = [env.bass, env.mid, env.treble, env.mid * 0.6, env.bass * 0.5], q;
+      for (q = 0; q < 5; q++) poly(box(-2 + q * 12, h + 9, 4 + q * 12, h + 9 + 2 + Math.min(1, lv[q]) * 8, -109), C.accent);
+      var kk = P(110, h + 15, -109); g.beginPath(); g.arc(kk[0], kk[1], 7, 0, 7); g.fillStyle = '#16181c'; g.fill(); g.strokeStyle = '#555b66'; g.lineWidth = 1; g.stroke();
+    }
+  }
+
+  /* modelo 7: caixa carpete cinza com 2 woofers TR 620, 2 cornetas pretas e 2 tweeters JBL */
+  function blackHorn(cx, cy, r) {
+    var N = 7, i, u, col;
+    poly(ell(cx, cy, r + 6, r + 6, 0.6, 48), lightGrad(cx, cy, r + 6, 0.6, [[0, '#4a4e57'], [1, '#08090b']]), '#000', 1);
+    for (i = 0; i <= N; i++) {
+      u = i / N; col = mix('#41454d', '#050607', Math.pow(u, 0.7) * 0.97);
+      poly(ell(cx + 3 * u, cy, r * (1 - 0.6 * u), r * (1 - 0.6 * u), -2 - 24 * u, 44), col, null);
+    }
+    g.save(); clipPoly(ell(cx, cy, r, 0.6, 48)); var c0 = P(cx, cy, 0);
+    g.fillStyle = lightGrad(cx, cy, r, 0, [[0, 'rgba(255,255,255,0.28)'], [0.5, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.5)']]);
+    g.fillRect(c0[0] - 3 * r, c0[1] - 3 * r, 6 * r, 6 * r); g.restore();
+    specular(cx - r * 0.35, cy + r * 0.4, -2, r * 0.55, 0.45);
+  }
+  function drawTR(dx, dm, tdx) {
+    var w = 240, h = 190, i, f, X;
+    slab(-w, w, -h, 80, -300, 0, C.body, C.bodySide, C.bodyTop, '#0a0b0d');
+    // pod de cima, com a frente preta
+    slab(-w, w, 80, h, -200, 0, C.body, C.bodySide, C.bodyTop, '#0a0b0d');
+    poly(box(-w + 8, 88, w - 8, h - 8, 0.5), lightGrad(0, 135, 240, 0.5, [[0, '#23262c'], [1, '#07080a']]), '#000', 1.5);
+    blackHorn(-62, 135, 46);
+    blackHorn(62, 135, 46);
+    [-1, 1].forEach(function (sd) {
+      X = sd * 188;
+      poly(box(X - 40, 95, X + 40, 175, 0.9), lightGrad(X, 135, 44, 0.9, [[0, '#30343b'], [1, '#0a0b0d']]), '#000', 1);
+      [[-33, 68], [33, 68], [-33, 102], [33, 102]].forEach(function (q) { var p = P(X + q[0] * 0.9, 95 + q[1] * 0.0 + (q[1] > 80 ? 70 : 8), 1.4); g.beginPath(); g.arc(p[0], p[1], 2.4, 0, 7); g.fillStyle = '#8d939c'; g.fill(); });
+      faceText('JBL', X, 168, 11, '#e9ecef');
+      drawDriver(X, 130, 31, { silver: true, chrome: true, depth: 22, n: 5, lab: null }, tdx);
+    });
+    // dutos de ar em cima dos woofers
+    [[-218, -14], [14, 218]].forEach(function (r) {
+      poly(box(r[0], 46, r[1], 74, 0.5), '#030304', '#0a0b0d', 1.5);
+      poly(box(r[0] + 4, 50, r[1] - 4, 70, 0.6), lightGrad((r[0] + r[1]) / 2, 60, 100, 0.6, [[0, '#1a1c20'], [1, '#020203']]), null);
+    });
+    // dois woofers TR 620
+    [-118, 118].forEach(function (cx) {
+      drawDriver(cx, -68, 100, { depth: 55, n: 9, labW: 1.5, lab: [['TR', '#f4f4f4'], ['620', '#e0443c']], cd: '#14161a', cl: '#4a4f58' }, dx);
+    });
+  }
+
+  /* modelo 8: caixa Vulcano (woofer invertido com a cesta à mostra, pod vermelho com corneta e tweeter) */
+  function octPts(cx, cy, r, z) { var p = [], k; for (k = 0; k < 8; k++) { var a = Math.PI / 8 + k * Math.PI / 4; p.push(P(cx + r * Math.cos(a), cy + r * Math.sin(a), z)); } return p; }
+  function whiteHorn(cx, cy, r, rc) {
+    rc = rc || '#c8272d';
+    var N = 7, i, u, col;
+    poly(circ(cx, cy, r + 9, 0.8, 48), lightGrad(cx, cy, r + 9, 0.8, [[0, mix(rc, '#ffffff', 0.25)], [1, mix(rc, '#000000', 0.5)]]), mix(rc, '#000000', 0.7), 1.2);
+    poly(circ(cx, cy, r + 2, 1, 48), lightGrad(cx, cy, r + 2, 1, [[0, '#ffffff'], [1, '#aeb3ba']]), '#8b9098', 1);
+    for (i = 0; i <= N; i++) {
+      u = i / N; col = mix('#f6f7f8', '#8a919b', Math.pow(u, 0.8));
+      poly(circ(cx + 3 * u, cy, r * (1 - 0.62 * u), -2 - 30 * u, 44), col, null);
+    }
+    g.save(); clipPoly(circ(cx, cy, r, 1, 48)); var c0 = P(cx, cy, 0);
+    g.fillStyle = lightGrad(cx, cy, r, 0, [[0, 'rgba(255,255,255,0.4)'], [0.5, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.38)']]);
+    g.fillRect(c0[0] - 3 * r, c0[1] - 3 * r, 6 * r, 6 * r); g.restore();
+    [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(function (q) { var p = P(cx + q[0] * (r + 5), cy + q[1] * (r + 5), 1.4); g.beginPath(); g.arc(p[0], p[1], 2.4, 0, 7); g.fillStyle = '#d0d4da'; g.fill(); });
+  }
+  // woofer invertido em 3D: aro, cesta com raios em funil, motor em dois degraus saindo para fora
+  function vulcanoDriver(cx, cy, R, dx) {
+    var k, a, a2, ri = R * 0.5, ro = R * 1.12, i, N = 6, zh = 34, rm = R * 0.5, z1 = zh + 36, z2 = z1 + 14, mv = dx * 0.7;
+    function pp(r, ang, z) { return P(cx + r * Math.cos(ang), cy + r * Math.sin(ang), z); }
+    // sombra da peça no fundo e aro com espessura
+    poly(circ(cx, cy, ro + 6, 0.2, 64), 'rgba(0,0,0,0.45)', null);
+    for (i = 0; i <= 5; i++) poly(circ(cx, cy, ro + 3, 0.5 + i * 3, 64), mix('#2c2f35', '#aab0b8', i / 5), '#0a0b0d', 0.7);
+    poly(circ(cx, cy, ro - 3, 17, 64), '#08090a', null);
+    // cone traseiro escuro visto entre os raios
+    for (i = 0; i < 5; i++) poly(circ(cx, cy, ro * (0.92 - i * 0.1), 4 + i * 6 + mv * (0.3 + i * 0.18), 48), mix('#17181b', '#33363d', i / 5), 'rgba(255,255,255,0.05)', 0.8);
+    // raios em funil: face lateral escura + face clara por cima
+    for (k = 0; k < 8; k++) {
+      a = k * Math.PI / 4 + 0.22; a2 = a + 0.2;
+      poly([pp(ro - 3, a, 17), pp(ro - 3, a2, 17), pp(ri + 2, a2, zh - 8), pp(ri + 2, a, zh - 8)], '#1d1f23', null);
+      poly([pp(ro - 3, a - 0.02, 17), pp(ro - 3, a2 + 0.02, 17), pp(ri, a2 + 0.04, zh), pp(ri, a - 0.04, zh)], lightGrad(cx, cy, R, zh, [[0, '#c3c8d0'], [0.55, '#767c85'], [1, '#33373e']]), '#15171a', 0.8);
+      poly([pp(ro - 3, a2 + 0.02, 17), pp(ro - 3, a2 + 0.02, 12), pp(ri, a2 + 0.04, zh - 9), pp(ri, a2 + 0.04, zh)], '#2b2e34', null);
+    }
+    // anel de ligação
+    for (i = 0; i <= 3; i++) poly(circ(cx, cy, ri + 4, zh + i * 3, 48), mix('#3a3e45', '#8d939c', i / 3), '#0a0b0d', 0.7);
+    // cone móvel em volta do motor (é essa parte que bate)
+    for (i = 0; i <= 3; i++) poly(circ(cx, cy, rm * (1.5 - i * 0.12), zh - 2 + i * 3 + mv, 48), mix('#1a1c20', '#40444b', i / 3), 'rgba(0,0,0,0.4)', 0.7);
+    // aro preto parado (cilindro com espessura) onde ficam os nomes
+    var rb = R * 0.62;
+    for (i = 0; i <= N; i++) poly(circ(cx, cy, rb, zh + 6 + (z1 - zh - 6) * i / N, 48), mix('#101114', '#3b3f46', i / N), 'rgba(0,0,0,0.45)', 0.7);
+    poly(circ(cx, cy, rb, z1 + 0.4, 48), lightGrad(cx, cy, rb, z1, [[0, '#3a3e45'], [1, '#0b0c0e']]), '#050506', 1.4);
+    poly(circ(cx, cy, rb * 0.93, z1 + 0.7, 48), null, 'rgba(255,255,255,0.22)', 1);
+    // nomes impressos no aro preto, recortados pela borda do aro
+    g.save(); clipPoly(circ(cx, cy, rb * 0.9, z1 + 0.8, 48));
+    poly(box(cx - rb, cy + rb * 0.34, cx + rb, cy + rb * 0.66, z1 + 1), '#e0482f', '#8d2a1c', 1);
+    capLabel(cx, cy + rb * 0.5, z1 + 1.2, rb * 1.3, [['VULCANO', '#fff3ea']]);
+    poly(box(cx - rb * 0.5, cy - rb * 0.72, cx + rb * 0.5, cy - rb * 0.42, z1 + 1), '#e0482f', '#8d2a1c', 1);
+    capLabel(cx, cy - rb * 0.57, z1 + 1.2, rb * 0.62, [['JBL', '#fff3ea']]);
+    g.restore();
+    // miolo metálico no centro
+    poly(circ(cx, cy, rb * 0.3, z1 + 1.2, 32), lightGrad(cx, cy, rb * 0.3, z1, [[0, '#d5dae1'], [1, '#5a6068']]), '#2a2d33', 1);
+    poly(circ(cx, cy, rb * 0.14, z1 + 1.6, 24), '#050506', null);
+    specular(cx - rb * 0.45, cy + rb * 0.1, z1 + 2, rb * 0.5, 0.3);
+  }
+  function drawVulcano(dx, dm, tdx) {
+    var cx = -150, cy = -15, Ro = 128, RED = '#c8272d', k, a, i;
+    slab(-330, 30, -150, 120, -260, 0, '#f2f1ed', '#7b7068', '#f6f5f2', '#08090b');
+    // faixas vermelhas e pretas na frente
+    g.save(); clipPoly(box(-330, -150, 30, 120, 0.4));
+    stripe2(-345, 118, -228, 150, 0, RED, 0.5);
+    stripe2(-340, 70, -250, 150, 40, RED, 0.5); stripe2(-300, 70, -210, 150, 16, '#14161a', 0.5);
+    stripe2(-60, -170, 40, -60, 34, RED, 0.5); stripe2(-90, -170, 10, -60, 14, '#14161a', 0.5);
+    stripe2(-345, -120, -280, -170, 30, '#14161a', 0.5);
+    g.restore();
+    // octógono com fundo, paredes e piso
+    var o0 = octPts(cx, cy, Ro, 0.8), o1 = octPts(cx, cy, Ro * 0.84, -46);
+    poly(o0, '#e9eaec', '#aab0b8', 1.5);
+    for (k = 0; k < 8; k++) {
+      var kn = (k + 1) % 8, lt = Math.cos(Math.PI / 8 + k * Math.PI / 4 + Math.PI / 8 - 2.2) * 0.5 + 0.5;
+      poly([o0[k], o0[kn], o1[kn], o1[k]], mix('#8f949b', '#f4f5f6', lt), 'rgba(0,0,0,0.25)', 0.8);
+    }
+    poly(o1, '#cfd2d6', '#9aa0a8', 1);
+    // woofer invertido (para fora, na parede de fundo)
+    ZO = -46; vulcanoDriver(cx, cy, 90, dx); ZO = 0;
+    // faixa vertical vermelha e preta entre os blocos
+    poly(box(30, -150, 44, 130, 0.6), '#14161a', '#05060a', 1);
+    poly(box(44, -150, 56, 130, 0.6), RED, '#7d1418', 1);
+    // bloco da direita: caixa branca com triângulos e pod vermelho
+    slab(56, 330, -150, -8, -260, 0, '#f4f4f2', '#a8abb0', '#ffffff', '#08090b');
+    recess(70, -140, 316, -24, 46, '#d5d8dc', '#e8e9eb', '#f8f8f8');
+    tri([76, -136], [190, -136], [76, -40], '#f6f6f4', '#9aa0a8', 0.9); tri([310, -136], [196, -136], [310, -40], '#f6f6f4', '#9aa0a8', 0.9);
+    tri([76, -30], [310, -30], [193, -118], '#bfc3c9', '#8b9098', 0.4);
+    // base que segura a corneta e o tweeter (prateleira que sai da frente)
+    slab(50, 336, -16, -4, -260, 22, '#f4f4f2', '#9a9ea5', '#ffffff', '#08090b');
+    slab(56, 330, -4, 132, -260, 0, RED, '#8f1c20', '#de4046', '#2a0a0c');
+    [[70, -4, 84, 132], [302, -4, 316, 132]].forEach(function (r) { poly(box(r[0], r[1], r[2], r[3], 0.7), '#f2f2f0', '#9aa0a8', 1); });
+    poly(box(92, 4, 296, 124, 0.9), lightGrad(190, 64, 120, 0.9, [[0, '#d9363c'], [1, '#8a1519']]), '#4a0c0f', 1);
+    whiteHorn(150, 64, 48);
+    poly(box(218, 22, 288, 106, 1.1), lightGrad(253, 64, 40, 1.1, [[0, '#e8484d'], [1, '#7a1519']]), '#3a0a0c', 1);
+    faceText('SELENIUM', 253, 108, 6, '#fff3ea');
+    drawDriver(253, 62, 28, { silver: true, chrome: true, depth: 22, n: 5, lab: null }, tdx);
+  }
+
+  /* modelo 9: paredão azul e branco com dois woofers Vulcano, dois alto-falantes TRITON embutidos, cornetas brancas e tweeters JBL */
+  // prisma: polígono da frente (x,y) extrudado para trás
+  function prism(pts, D, cf, cs, ct, edge) {
+    var n = pts.length, i, area = 0, j, p, q, dx, dy, nx, ny, L, a, b;
+    for (i = 0; i < n; i++) { j = (i + 1) % n; area += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1]; }
+    var sg = area > 0 ? 1 : -1;
+    for (i = 0; i < n; i++) {
+      p = pts[i]; q = pts[(i + 1) % n]; dx = q[0] - p[0]; dy = q[1] - p[1]; L = Math.sqrt(dx * dx + dy * dy);
+      nx = sg * dy / L; ny = -sg * dx / L;
+      if (nx > 0.03 || ny > 0.03) {
+        var t = Math.max(0, ny), col = mix(cs, ct, Math.min(1, t * 1.2));
+        poly([P(p[0], p[1], 0), P(q[0], q[1], 0), P(q[0], q[1], -D), P(p[0], p[1], -D)], col, edge, 1.3);
+      }
+    }
+    var f = pts.map(function (v) { return P(v[0], v[1], 0); }), ys = pts.map(function (v) { return v[1]; }), xs = pts.map(function (v) { return v[0]; });
+    var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys), x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    a = P(x0, y1, 0); b = P(x1, y0, 0);
+    var gr = g.createLinearGradient(a[0], a[1], b[0], b[1]);
+    gr.addColorStop(0, mix(cf, '#ffffff', 0.26)); gr.addColorStop(1, mix(cf, '#000000', 0.12));
+    poly(f, gr, edge, 1.5);
+  }
+  // furo redondo com profundidade; o alto-falante fica lá no fundo
+  function roundHole(cx, cy, r, dp) {
+    var f = circ(cx, cy, r, 0.8, 48), bk = circ(cx, cy, r, -dp, 48);
+    poly(circ(cx, cy, r + 6, 0.7, 48), lightGrad(cx, cy, r + 6, 0.7, [[0, '#6f8fe8'], [1, '#101e50']]), '#071033', 1);
+    g.save(); clipPoly(f);
+    var c0 = P(cx, cy, 0.8); g.fillStyle = lightGrad(cx, cy, r, 0.8, [[0, '#1b2a66'], [1, '#e6ebf7']]); g.fillRect(c0[0] - 2 * r, c0[1] - 2 * r, 4 * r, 4 * r);
+    poly(bk, '#0c1233', null);
+    g.restore();
+    poly(f, null, 'rgba(0,0,0,0.5)', 1.2);
+  }
+  // caixa retangular funda: fundo, parede direita e piso
+  function deepBox(x0, y0, x1, y1, dp) {
+    poly(box(x0 - 7, y0 - 7, x1 + 7, y1 + 7, 0.7), '#f6f6f4', '#8b9098', 1.2);
+    poly(box(x0, y0, x1, y1, 0.9), '#e9ebee', '#7d838c', 1);
+    poly([P(x0, y1, 0.9), P(x1, y1, 0.9), P(x1, y1, -dp), P(x0, y1, -dp)], '#ffffff', null);
+    poly([P(x1, y1, 0.9), P(x1, y1, -dp), P(x1, y0, -dp), P(x1, y0, 0.9)], '#9aa1ab', '#6b717a', 1);
+    poly([P(x0, y0, 0.9), P(x1, y0, 0.9), P(x1, y0, -dp), P(x0, y0, -dp)], '#c3c8cf', null);
+    poly(box(x0, y0, x1, y1, -dp), '#101216', '#05060a', 1);
+  }
+  function drawVulcAzul(dx, dm, tdx) {
+    var BL = C.body, k, o0, o1, X, mx;
+    // módulo de baixo: cantos retos
+    prism([[-320, 30], [320, 30], [320, -290], [-320, -290]], 250, BL, C.bodySide, C.bodyTop, '#05070d');
+    [-157, 157].forEach(function (cx) {
+      o0 = octPts(cx, -130, 160, 0.8); o1 = octPts(cx, -130, 160 * 0.84, -52);
+      poly(octPts(cx, -130, 167, 0.6), '#f6f6f4', '#9aa0a8', 1.2);
+      poly(o0, '#f1f2f3', '#aab0b8', 1.2);
+      for (k = 0; k < 8; k++) {
+        var kn = (k + 1) % 8, lt = Math.cos(Math.PI / 8 + k * Math.PI / 4 + Math.PI / 8 - 2.2) * 0.5 + 0.5;
+        poly([o0[k], o0[kn], o1[kn], o1[k]], mix('#9aa1ab', '#ffffff', lt), 'rgba(0,0,0,0.22)', 0.8);
+      }
+      poly(o1, mix(BL, '#000000', 0.25), '#0b1840', 1);
+      ZO = -52; vulcanoDriver(cx, -130, 112, dx); ZO = 0;
+    });
+    // base azul (prateleira) entre os módulos
+    slab(-318, 318, 30, 66, -250, 20, BL, C.bodySide, mix(BL, '#ffffff', 0.3), '#05070d');
+    poly(box(-314, 62, 314, 64, 20.5), 'rgba(255,255,255,0.35)', null);
+    // módulo de cima: mais largo no topo, cantos chanfrados
+    prism([[-300, 66], [300, 66], [338, 248], [320, 266], [-320, 266], [-338, 248]], 210, BL, C.bodySide, C.bodyTop, '#05070d');
+    // laterais inclinadas com borda branca
+    [-1, 1].forEach(function (sd) {
+      var o = function (x, y) { return [sd * x, y]; }, A = [o(326, 246), o(262, 246), o(262, 86), o(296, 86)];
+      poly(A.map(function (v) { return P(v[0], v[1], 0.5); }), '#f4f4f2', '#9aa0a8', 1);
+      var B = [o(318, 238), o(270, 238), o(270, 94), o(292, 94)];
+      poly(B.map(function (v) { return P(v[0], v[1], 0.6); }), BL, '#0b1840', 1);
+    });
+    // duas caixas brancas fundas com a corneta TRITON no fundo
+    [[-232, -34], [34, 232]].forEach(function (r) {
+      mx = (r[0] + r[1]) / 2;
+      deepBox(r[0], 150, r[1], 252, 70);
+      ZO = -70; drawDriver(mx, 201, 36, { depth: 40, n: 8, labW: 1.6, lab: [['TRITON', '#e9ecef']], ca: '#2c2f36', cb: '#06070a', cd: '#0b0c0f', cl: '#3a3e46' }, dm); ZO = 0;
+    });
+    // duas cornetas brancas apoiadas na base azul
+    whiteHorn(-92, 110, 48, '#e9eef8'); whiteHorn(92, 110, 48, '#e9eef8');
+    // cornetas prateadas e tweeters JBL nas pontas
+    hornBell(-290, 178, 26, 30); hornBell(290, 178, 26, 30);
+    [-1, 1].forEach(function (sd) {
+      X = sd * 238;
+      poly(circ(X, 100, 38, 0.9, 40), lightGrad(X, 100, 38, 0.9, [[0, '#30343b'], [1, '#08090b']]), '#000', 1);
+      drawDriver(X, 100, 29, { silver: true, chrome: true, depth: 22, n: 5, lab: [['JBL', '#20242a']] }, tdx);
+    });
+  }
+
+  var MODELS = {
+    classica: { name: 'Clássica', W: 580, H: 320, D: 250, head: { x0: 100, x1: 262, y0: 100, y1: 140 }, draw: drawClassic,
+      defaults: { body: '#ebe9e3', frame: '#15191f', silver: '#d8dce1', cone: '#363a41', glow: '#6fd6c4' } },
+    torre: { name: 'Torre', W: 320, H: 440, D: 250, head: { x0: -76, x1: 70, y0: 141, y1: 189 }, draw: drawTorre,
+      defaults: { body: '#f0efea', frame: '#15191f', silver: '#d8dce1', cone: '#363a41', glow: '#4aa3ff' } },
+    azul: { name: 'Caixa azul', tex: 'felt', W: 320, H: 440, D: 300, head: null, draw: drawAzul,
+      defaults: { body: '#2b3f8c', frame: '#101114', silver: '#9aa1ab', cone: '#25272c', glow: '#6fd6c4' } },
+    led: { name: 'Paredão LED', W: 620, H: 520, D: 250, head: { x0: -72, x1: 72, y0: 22, y1: 54 }, draw: drawLed,
+      defaults: { body: '#16181c', frame: '#0b0c0e', silver: '#cfd4db', cone: '#26262b', glow: '#4aa3ff' } },
+    carpete: { name: 'Caixa carpete', tex: 'carpet', W: 520, H: 350, D: 300, head: { x0: -20, x1: 150, y0: 175, y1: 205, z: -110 }, draw: drawCarpete,
+      defaults: { body: '#0a0d12', frame: '#07090d', silver: '#c3c9d2', cone: '#0f1219', glow: '#2f7bff' } },
+    tr: { name: 'Caixa TR 620', tex: 'carpet', W: 480, H: 380, D: 300, head: null, draw: drawTR,
+      defaults: { body: '#6a6d73', frame: '#0c0d10', silver: '#c9ced6', cone: '#17191d', glow: '#6fd6c4' } },
+    vulcano: { name: 'Caixa Vulcano', tex: 'carpet', W: 660, H: 300, D: 260, head: null, draw: drawVulcano,
+      defaults: { body: '#7b7068', frame: '#14161a', silver: '#c9ced6', cone: '#17191d', glow: '#ff5a3c' } },
+    vulcazul: { name: 'Vulcano azul', W: 660, H: 580, D: 250, head: null, draw: drawVulcAzul,
+      defaults: { body: '#2447b3', frame: '#14161a', silver: '#c9ced6', cone: '#17191d', glow: '#4aa3ff' } },
+    dupla: { name: 'Dupla 4 vias', W: 640, H: 530, D: 250, head: null, draw: drawDupla,
+      defaults: { body: '#f1f1ee', frame: '#111317', silver: '#c9ced6', cone: '#2a2d33', glow: '#6fd6c4' } }
+  };
+
+  // calcula a escala que faz cada modelo caber no palco, mantendo o chão no mesmo lugar
+  function fitModel(M) {
+    YO = M.H / 2 - FLOOR; ZO = 0;
+    var w = M.W / 2, h = M.H / 2, xs = [], ys = [];
+    [-w, w].forEach(function (x) { [-h, h].forEach(function (y) { [0, -M.D].forEach(function (z) { var p = P(x, y, z); xs.push(p[0]); ys.push(p[1]); }); }); });
+    var pv = P(0, -h, 0), x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys);
+    YO = 0;
+    M.pv = pv;
+    M.s = Math.min(1, (pv[1] - 26) / (pv[1] - y0), (OX - 18) / (OX - x0), (722 - OX) / (x1 - OX));
+  }
+  Object.keys(MODELS).forEach(function (k) { fitModel(MODELS[k]); });
+
+  function draw(dx, dm, tdx, shx, shy) {
+    var V = VIEWS[scene] || VIEWS.palco, M = MODELS[model] || MODELS.classica;
+    g.setTransform(S, 0, 0, S, 0, 0);
+    drawBackdrop();
+    g.setTransform(S * V.sc, 0, 0, S * V.sc, S * V.tx, S * V.ty);
+    if (scene === 'carro') drawTrunk(FLOOR, shx, shy);
+    else if (scene === 'sala') drawDresser(FLOOR);
+
+    g.translate(M.pv[0], M.pv[1]); g.scale(M.s, M.s); g.translate(-M.pv[0], -M.pv[1]);
+    YO = M.H / 2 - FLOOR;
+    var w = M.W / 2, h = M.H / 2;
+    softShadow(w, h, M.D, scene === 'palco' ? 0.62 : 0.5);
+    curTex = M.tex || null;
+    g.save();
+    g.translate(shx, shy);
+    M.draw(dx, dm, tdx);
+    g.restore();
+    YO = 0; ZO = 0; curTex = null;
+    // vinheta e grão de câmera
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    var vg = g.createRadialGradient(cv.width * 0.46, cv.height * 0.5, cv.height * 0.3, cv.width * 0.5, cv.height * 0.5, cv.width * 0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.4)');
+    g.fillStyle = vg; g.fillRect(0, 0, cv.width, cv.height);
+    if (!grainPat) grainPat = g.createPattern(makeGrain(), 'repeat');
+    g.fillStyle = grainPat; g.fillRect(0, 0, cv.width, cv.height);
+  }
+
+  /* ---------- áudio ---------- */
+  var AC = window.AudioContext || window.webkitAudioContext;
+  var ac = null, gain = null, analyser = null, freq = null, bassF = null, subF = null, comp = null, bassDb = 0;
+  var buffer = null, src = null, startedAt = 0, offset = 0, playing = false, loop = false;
+  var label = '', demoBuf = null, vol = 0.8, mov = 1, muted = false;
+  var rd = { pen: null, idx: 0, tok: 0, busy: false, source: 'fm', intro: false, rpt: false, rdm: false, msg: '', msgUntil: 0 };
+
+  function ensureAudio() {
+    if (!AC) return false;
+    if (!ac) {
+      ac = new AC();
+      gain = ac.createGain(); gain.gain.value = muted ? 0 : vol;
+      analyser = ac.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.45;
+      analyser.minDecibels = -85; analyser.maxDecibels = -20;
+      bassF = ac.createBiquadFilter(); bassF.type = 'lowshelf'; bassF.frequency.value = 140; bassF.gain.value = bassDb;
+      subF = ac.createBiquadFilter(); subF.type = 'peaking'; subF.frequency.value = 60; subF.Q.value = 1; subF.gain.value = bassDb * 0.5;
+      comp = ac.createDynamicsCompressor(); comp.threshold.value = -10; comp.knee.value = 12; comp.ratio.value = 8; comp.attack.value = 0.003; comp.release.value = 0.15;
+      bassF.connect(subF); subF.connect(gain); gain.connect(comp); comp.connect(analyser); analyser.connect(ac.destination);
+      freq = new Uint8Array(analyser.frequencyBinCount);
+    }
+    if (ac.state === 'suspended') { try { ac.resume(); } catch (e) {} }
+    return true;
+  }
+  function stopSource() {
+    if (!src) return;
+    var s = src; src = null; s.onended = null;
+    try { s.stop(); } catch (e) {}
+    try { s.disconnect(); } catch (e) {}
+  }
+  function position() {
+    if (!buffer) return 0;
+    if (!playing) return offset;
+    var p = ac.currentTime - startedAt;
+    return loop ? p % buffer.duration : Math.min(p, buffer.duration);
+  }
+  function play() {
+    if (!buffer || !ensureAudio()) return;
+    stopSource();
+    var s = ac.createBufferSource();
+    s.buffer = buffer; s.loop = loop; s.connect(bassF);
+    var off = Math.min(offset, Math.max(0, buffer.duration - 0.01));
+    s.start(0, off);
+    startedAt = ac.currentTime - off;
+    s.onended = function () {
+      if (src === s && !loop) { src = null; playing = false; offset = 0; onEnded(); }
+    };
+    src = s; playing = true;
+  }
+  function pause() { offset = position(); stopSource(); playing = false; }
+
+  function setTrack(buf, isLoop, name, usb) {
+    stopSource();
+    buffer = buf; loop = isLoop; offset = 0; label = name;
+    if (!usb) { rd.tok++; rd.busy = false; rd.source = 'aux'; }
+    play(); updateUI();
+  }
+
+  function loadFile(file) {
+    if (!file) return;
+    if (!ensureAudio()) { setStatus('Este navegador não tem suporte a áudio.'); return; }
+    setStatus('Carregando ' + file.name + '…');
+    file.arrayBuffer().then(function (ab) {
+      return new Promise(function (res, rej) { ac.decodeAudioData(ab, res, rej); });
+    }).then(function (b) {
+      setTrack(b, false, file.name);
+    }).catch(function () {
+      setStatus('Não consegui abrir esse arquivo. Tente MP3, WAV, OGG ou M4A.');
+    });
+  }
+
+  function makeDemo() {
+    var sr = 44100, bpm = 120, beat = 60 / bpm, bars = 4, steps = bars * 8;
+    var dur = bars * 4 * beat;
+    var oc = new OfflineAudioContext(1, Math.ceil(sr * dur), sr);
+    var comp = oc.createDynamicsCompressor();
+    var master = oc.createGain(); master.gain.value = 0.7;
+    master.connect(comp); comp.connect(oc.destination);
+    var nb = oc.createBuffer(1, Math.floor(sr * 0.1), sr), nd = nb.getChannelData(0);
+    for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    var bassNotes = [55, 55, 73.42, 49], pluck = [220, 261.63, 293.66, 246.94];
+    function env(gn, t, peak, len) {
+      gn.gain.setValueAtTime(peak, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + len);
+    }
+    for (var e = 0; e < steps; e++) {
+      var t = e * beat / 2, bar = Math.floor(e / 8) % 4;
+      if (e % 2 === 0) {
+        var o = oc.createOscillator(), gn = oc.createGain();
+        o.frequency.setValueAtTime(150, t);
+        o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+        env(gn, t, 1, 0.42);
+        o.connect(gn); gn.connect(master); o.start(t); o.stop(t + 0.45);
+      } else {
+        var ob = oc.createOscillator(), fb = oc.createBiquadFilter(), gb = oc.createGain();
+        ob.type = 'sawtooth'; ob.frequency.value = bassNotes[bar];
+        fb.type = 'lowpass'; fb.frequency.value = 150;
+        env(gb, t, 0.6, 0.24);
+        ob.connect(fb); fb.connect(gb); gb.connect(master); ob.start(t); ob.stop(t + 0.26);
+      }
+      var h = oc.createBufferSource(), hf = oc.createBiquadFilter(), hg = oc.createGain();
+      h.buffer = nb; hf.type = 'highpass'; hf.frequency.value = 7000;
+      env(hg, t, e % 2 ? 0.22 : 0.12, 0.05);
+      h.connect(hf); hf.connect(hg); hg.connect(master); h.start(t); h.stop(t + 0.06);
+      var k = e % 8;
+      if (k === 0 || k === 3 || k === 6) {
+        var op = oc.createOscillator(), gp = oc.createGain();
+        op.type = 'triangle'; op.frequency.value = pluck[bar] * (k === 3 ? 1.5 : 1);
+        env(gp, t, 0.16, 0.35);
+        op.connect(gp); gp.connect(master); op.start(t); op.stop(t + 0.38);
+      }
+    }
+    return oc.startRendering();
+  }
+
+  /* ---------- interface ---------- */
+  var playBtn = $('playBtn'), seek = $('seek'), timeEl = $('time'), statusEl = $('status'), hint = $('hint'), stage = $('stage');
+  var seeking = false;
+  function fmt(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  function setStatus(t) { statusEl.textContent = t; }
+  function updateUI() {
+    playBtn.disabled = !buffer; seek.disabled = !buffer;
+    playBtn.textContent = playing ? 'Pausar' : 'Tocar';
+    hint.hidden = !!buffer;
+    if (buffer) setStatus((playing ? 'Tocando: ' : 'Pausado: ') + label);
+    renderRadio();
+  }
+
+  $('openBtn').addEventListener('click', function () { ensureAudio(); $('file').click(); });
+  $('file').addEventListener('change', function (e) { loadFile(e.target.files[0]); e.target.value = ''; });
+  $('demoBtn').addEventListener('click', function () {
+    ensureAudio(); setStatus('Gerando exemplo…');
+    var p = demoBuf ? Promise.resolve(demoBuf) : makeDemo();
+    p.then(function (b) { demoBuf = b; setTrack(b, true, 'Exemplo: batida sintética em loop'); })
+     .catch(function () { setStatus('Não foi possível gerar o exemplo neste navegador.'); });
+  });
+  playBtn.addEventListener('click', function () {
+    if (!buffer) return; ensureAudio();
+    if (playing) pause(); else play();
+    updateUI();
+  });
+  seek.addEventListener('input', function () {
+    seeking = true;
+    if (buffer) timeEl.textContent = fmt(seek.value / 1000 * buffer.duration) + ' / ' + fmt(buffer.duration);
+  });
+  seek.addEventListener('change', function () {
+    seeking = false;
+    if (!buffer) return;
+    offset = seek.value / 1000 * buffer.duration;
+    if (playing) play();
+  });
+  $('vol').addEventListener('input', function (e) { vol = +e.target.value; muted = false; applyVol(); });
+  $('mov').addEventListener('input', function (e) { mov = +e.target.value; });
+  var bassEl = $('bass'), bassVal = $('bassVal'), boostBtn = $('boostBtn');
+  function setBass(db) {
+    bassDb = db; bassEl.value = db;
+    bassVal.textContent = '+' + db + ' dB';
+    boostBtn.setAttribute('aria-pressed', db > 0 ? 'true' : 'false');
+    if (bassF) { bassF.gain.value = db; subF.gain.value = db * 0.5; }
+    renderRadio();
+  }
+  bassEl.addEventListener('input', function (e) { setBass(+e.target.value); });
+  boostBtn.addEventListener('click', function () { setBass(bassDb > 0 ? 0 : 12); });
+
+  ['dragenter', 'dragover'].forEach(function (n) {
+    stage.addEventListener(n, function (e) { e.preventDefault(); stage.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (n) {
+    stage.addEventListener(n, function (e) { e.preventDefault(); stage.classList.remove('over'); });
+  });
+  stage.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) { ensureAudio(); loadFile(f); }
+  });
+  ['pointerdown', 'keydown'].forEach(function (n) {
+    document.addEventListener(n, function () { ensureAudio(); }, { once: true });
+  });
+
+  /* ---------- controle remoto ---------- */
+  var remote = $('remote'), rcBody = $('rcBody'), rcOpen = $('rcOpen'), rcRead = $('rcReadout');
+  var rcLed = $('rcLed'), cordG = $('cord'), rcTimer = 0;
+  rcBody.inert = true;
+
+  function applyVol() { if (gain) gain.gain.value = muted ? 0 : vol; syncKnob(); }
+  function setOpen(o) {
+    remote.classList.toggle('open', o);
+    rcBody.inert = !o;
+    rcOpen.setAttribute('aria-expanded', o ? 'true' : 'false');
+    if (o) { try { $('rcPlay').focus({ preventScroll: true }); } catch (e) {} }
+  }
+  function toast(t) {
+    rcRead.textContent = t; rcRead.classList.add('on');
+    clearTimeout(rcTimer);
+    rcTimer = setTimeout(function () { rcRead.classList.remove('on'); }, 1300);
+  }
+  function setVol(v) {
+    vol = clamp(0, 1, Math.round(v * 100) / 100);
+    muted = false;
+    $('vol').value = vol;
+    applyVol();
+    toast('Volume ' + Math.round(vol * 100) + '%');
+  }
+  function skip(d) {
+    if (!buffer) { toast('Abra uma música'); return; }
+    ensureAudio();
+    var p = position() + d;
+    p = loop ? (p % buffer.duration + buffer.duration) % buffer.duration : clamp(0, buffer.duration - 0.05, p);
+    offset = p;
+    if (playing) play();
+    toast((d > 0 ? '+' : '−') + '10 s');
+  }
+
+  rcOpen.addEventListener('click', function () { setOpen(true); });
+  $('rcClose').addEventListener('click', function () { setOpen(false); rcOpen.focus({ preventScroll: true }); });
+  document.addEventListener('pointerdown', function (e) {
+    if (remote.classList.contains('open') && !remote.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+
+  $('rcVolUp').addEventListener('click', function () { setVol(vol + 0.05); });
+  $('rcVolDown').addEventListener('click', function () { setVol(vol - 0.05); });
+  $('rcPower').addEventListener('click', function () { muted = !muted; applyVol(); toast(muted ? 'Mudo' : 'Som ligado'); });
+  $('rcFF').addEventListener('click', function () { skip(10); });
+  $('rcRew').addEventListener('click', function () { skip(-10); });
+  $('rcBassUp').addEventListener('click', function () { setBass(clamp(0, 18, bassDb + 3)); toast('Grave +' + bassDb + ' dB'); });
+  $('rcBassDown').addEventListener('click', function () { setBass(clamp(0, 18, bassDb - 3)); toast('Grave +' + bassDb + ' dB'); });
+  $('rcPlay').addEventListener('click', function () {
+    if (!buffer) { toast('Abra uma música'); return; }
+    ensureAudio();
+    if (playing) pause(); else play();
+    updateUI();
+    toast(playing ? 'Tocando' : 'Pausado');
+  });
+
+  /* ---------- personalização ---------- */
+  var KEY = 'caixa-de-som:estilo';
+  var DEFAULTS = { body: '#ebe9e3', frame: '#15191f', silver: '#d8dce1', cone: '#363a41', glow: '#6fd6c4', shell: '#999ca1', keys: '#2d2f34', cord: '#8a5cc4', patCol: '#14091f', pat: 'cruz', cordW: 40, cordL: 192, patS: 100, ledI: 100, head: true, horn: true };
+  var PRESETS = [
+    { name: 'Branca', body: '#ebe9e3', frame: '#15191f', silver: '#d8dce1', cone: '#363a41', glow: '#6fd6c4', shell: '#999ca1', keys: '#2d2f34', cord: '#8a5cc4', head: true, horn: true },
+    { name: 'Preta', body: '#2a2d33', frame: '#0b0c0f', silver: '#6f7782', cone: '#2f333a', glow: '#6fd6c4', shell: '#3a3d44', keys: '#202226', cord: '#e3b341', head: true, horn: true },
+    { name: 'Vermelha', body: '#b52a30', frame: '#15191f', silver: '#d8dce1', cone: '#33292b', glow: '#ff7a66', shell: '#a3282e', keys: '#2d2f34', cord: '#f1f1ee', head: true, horn: true },
+    { name: 'Azul', body: '#2a5da8', frame: '#101820', silver: '#c9d4e3', cone: '#2b3340', glow: '#7ed4ff', shell: '#2f66b3', keys: '#23262b', cord: '#ffd166', head: true, horn: true },
+    { name: 'Rosa', body: '#e9a3c3', frame: '#2a1d25', silver: '#f1e4ea', cone: '#4a3540', glow: '#ff4f9a', shell: '#d97aa6', keys: '#3a2a33', cord: '#6fd6c4', head: true, horn: true }
+  ];
+  var FIELDS = [['cBody', 'body'], ['cFrame', 'frame'], ['cSilver', 'silver'], ['cCone', 'cone'], ['cGlow', 'glow'], ['cShell', 'shell'], ['cKeys', 'keys'], ['cCord', 'cord']];
+  var cfg = {}, chips = [];
+  var PATS = ['cruz', 'estrela', 'coracao', 'raio', 'bolinhas', 'listras', 'nenhum'];
+  // desenha cordinha: tamanho, largura e estampa
+  function applyCord() {
+    var W = cfg.cordW, L = cfg.cordL, y0 = 348, y1 = y0 + L, NS = 'http://www.w3.org/2000/svg', gp = $('cordPat'), s = W * 0.55 * cfg.patS / 100, gap = s * 2.5, n, i, y, e, k, pts = [];
+    $('rcCord1').setAttribute('d', 'M100,' + y0 + ' V' + (y1 - W / 2)); $('rcCord1').setAttribute('stroke-width', W);
+    var ex = W / 2 - 4;
+    $('rcCord2').setAttribute('d', 'M' + (100 - ex) + ',' + (y0 + 2) + ' V' + (y1 - W / 2) + ' M' + (100 + ex) + ',' + (y0 + 2) + ' V' + (y1 - W / 2));
+    var bw = Math.max(26, W * 0.95);
+    $('rcKnot').setAttribute('x', 100 - bw / 2); $('rcKnot').setAttribute('width', bw);
+    $('rcKnotLine').setAttribute('d', 'M' + (100 - bw / 2 + 6) + ',335 H' + (100 + bw / 2 - 6) + ' M' + (100 - bw / 2 + 6) + ',342 H' + (100 + bw / 2 - 6));
+    while (gp.firstChild) gp.removeChild(gp.firstChild);
+    gp.setAttribute('stroke', cfg.patCol); gp.setAttribute('fill', 'none');
+    function add(d, fill, sw) { var p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); if (fill) p.setAttribute('fill', cfg.patCol); if (sw) p.setAttribute('stroke-width', sw); else p.setAttribute('stroke', 'none'); gp.appendChild(p); }
+    if (cfg.pat === 'nenhum') return;
+    if (cfg.pat === 'listras') {
+      var sw = Math.max(2, W * 0.1 * cfg.patS / 100 * 1.2), hw = W / 2 - 3;
+      for (y = y0 + 22; y < y1 - W / 2 - 6; y += sw * 3.2) add('M' + (100 - hw) + ',' + (y + hw * 0.5) + ' L' + (100 + hw) + ',' + (y - hw * 0.5), false, sw);
+      return;
+    }
+    n = Math.max(0, Math.floor((L - W / 2 - 20) / gap));
+    for (i = 0; i < n; i++) {
+      y = y0 + 26 + s + i * gap + ((L - W / 2 - 20) - (n - 1) * gap - 2 * s) / 2; if (n === 1) y = (y0 + y1 - W / 2) / 2 + 8;
+      var t = 'translate(' + 100 + ',' + y + ') scale(' + s + ')', d = '';
+      if (cfg.pat === 'cruz') d = 'M0,-1 V1.5 M-0.75,-0.4 H0.75';
+      else if (cfg.pat === 'coracao') d = 'M0,0.95 C-1.3,-0.1 -0.95,-1 0,-0.4 C0.95,-1 1.3,-0.1 0,0.95 Z';
+      else if (cfg.pat === 'raio') d = 'M0.3,-1 L-0.65,0.15 L-0.05,0.15 L-0.3,1 L0.65,-0.2 L0.05,-0.2 Z';
+      else if (cfg.pat === 'bolinhas') d = 'M0.7,0 A0.7,0.7 0 1 1 -0.7,0 A0.7,0.7 0 1 1 0.7,0 Z';
+      else if (cfg.pat === 'estrela') { pts = []; for (k = 0; k < 10; k++) { var a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? 0.42 : 1; pts.push((r * Math.cos(a)).toFixed(3) + ',' + (r * Math.sin(a)).toFixed(3)); } d = 'M' + pts.join(' L') + ' Z'; }
+      var p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); p.setAttribute('transform', t);
+      if (cfg.pat === 'cruz') { p.setAttribute('stroke-width', 0.2); p.setAttribute('stroke-linecap', 'round'); p.setAttribute('fill', 'none'); p.setAttribute('stroke', cfg.patCol); }
+      else { p.setAttribute('fill', cfg.patCol); p.setAttribute('stroke', 'none'); }
+      gp.appendChild(p);
+    }
+  }
+
+  function shade(c, t) {
+    var x = hex(c), tg = t >= 0 ? 255 : 0, a = Math.abs(t);
+    return '#' + x.map(function (v) { return ('0' + Math.round(v + (tg - v) * a).toString(16)).slice(-2); }).join('');
+  }
+  function sameAsPreset(p) {
+    return Object.keys(p).every(function (k) { return k === 'name' || cfg[k] === p[k]; });
+  }
+  function loadCfg() {
+    var out = Object.assign({}, DEFAULTS);
+    try {
+      var o = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (o) Object.keys(DEFAULTS).forEach(function (k) {
+        if (typeof DEFAULTS[k] === 'boolean') { if (typeof o[k] === 'boolean') out[k] = o[k]; }
+        else if (typeof DEFAULTS[k] === 'number') { if (typeof o[k] === 'number' && isFinite(o[k])) out[k] = o[k]; }
+        else if (k === 'pat') { if (typeof o[k] === 'string' && PATS.indexOf(o[k]) >= 0) out[k] = o[k]; }
+        else if (typeof o[k] === 'string' && /^#[0-9a-f]{6}$/i.test(o[k])) out[k] = o[k].toLowerCase();
+      });
+    } catch (e) {}
+    return out;
+  }
+  function stop(id, col) { $(id).setAttribute('stop-color', col); }
+
+  function applyCustom(save) {
+    C.body = cfg.body; C.bodySide = shade(cfg.body, -0.2); C.bodyTop = shade(cfg.body, 0.35);
+    C.frame = cfg.frame; C.silver = cfg.silver;
+    C.coneA = cfg.cone; C.coneB = shade(cfg.cone, -0.8);
+    C.accent = cfg.glow;
+    stop('rcShellA', shade(cfg.shell, 0.2)); stop('rcShellB', shade(cfg.shell, -0.18));
+    $('rcShellPath').setAttribute('stroke', shade(cfg.shell, -0.45));
+    stop('rcKeyA', shade(cfg.keys, 0.07)); stop('rcKeyB', shade(cfg.keys, -0.1));
+    Array.prototype.forEach.call(document.querySelectorAll('.rc-key'), function (r) { r.setAttribute('stroke', shade(cfg.keys, 0.22)); });
+    $('rcCord1').setAttribute('stroke', cfg.cord);
+    $('rcCord2').setAttribute('stroke', shade(cfg.cord, 0.5));
+    $('cPat').value = cfg.pat; $('cPatCol').value = cfg.patCol; $('cCordW').value = cfg.cordW; $('cCordL').value = cfg.cordL; $('cPatS').value = cfg.patS;
+    $('cLedI').value = cfg.ledI; $('oLedI').textContent = cfg.ledI + '%';
+    $('oCordW').textContent = cfg.cordW; $('oCordL').textContent = cfg.cordL; $('oPatS').textContent = cfg.patS + '%';
+    applyCord();
+    FIELDS.forEach(function (f) { $(f[0]).value = cfg[f[1]]; });
+    $('cHead').checked = cfg.head; $('cHorn').checked = cfg.horn;
+    chips.forEach(function (b, i) { b.setAttribute('aria-pressed', sameAsPreset(PRESETS[i]) ? 'true' : 'false'); });
+    $('radio').style.setProperty('--rd-glow', cfg.glow);
+    placeRadioHit();
+    if (save) { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+  }
+
+  PRESETS.forEach(function (p) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.setAttribute('aria-pressed', 'false');
+    var sw = document.createElement('span');
+    sw.className = 'sw'; sw.style.background = 'linear-gradient(90deg,' + p.body + ' 50%,' + p.glow + ' 50%)';
+    b.appendChild(sw); b.appendChild(document.createTextNode(p.name));
+    b.addEventListener('click', function () { var keep = { pat: cfg.pat, patCol: cfg.patCol, cordW: cfg.cordW, cordL: cfg.cordL, patS: cfg.patS }; cfg = Object.assign({}, DEFAULTS, p, keep); delete cfg.name; applyCustom(true); });
+    $('presets').appendChild(b); chips.push(b);
+  });
+  FIELDS.forEach(function (f) {
+    $(f[0]).addEventListener('input', function (e) { cfg[f[1]] = e.target.value.toLowerCase(); applyCustom(true); });
+  });
+  $('cPatCol').addEventListener('input', function (e) { cfg.patCol = e.target.value.toLowerCase(); applyCustom(true); });
+  $('cPat').addEventListener('change', function (e) { cfg.pat = e.target.value; applyCustom(true); });
+  [['cCordW', 'cordW'], ['cCordL', 'cordL'], ['cPatS', 'patS']].forEach(function (f) { $(f[0]).addEventListener('input', function (e) { cfg[f[1]] = +e.target.value; applyCustom(true); }); });
+  $('cLedI').addEventListener('input', function (e) { cfg.ledI = +e.target.value; applyCustom(true); });
+  $('cHead').addEventListener('change', function (e) { cfg.head = e.target.checked; applyCustom(true); });
+  $('cHorn').addEventListener('change', function (e) { cfg.horn = e.target.checked; applyCustom(true); });
+  $('cReset').addEventListener('click', function () { cfg = Object.assign({}, DEFAULTS); applyCustom(true); });
+  cfg = loadCfg();
+  applyCustom(false);
+
+  var SCENE_KEY = 'caixa-de-som:ambiente';
+  var sceneBtns = Array.prototype.slice.call(document.querySelectorAll('#scenes [data-scene]'));
+  function setScene(n, save) {
+    if (!VIEWS[n]) n = 'palco';
+    scene = n;
+    sceneBtns.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-scene') === n ? 'true' : 'false'); });
+    if (save) { try { localStorage.setItem(SCENE_KEY, n); } catch (e) {} }
+    placeRadioHit();
+  }
+  sceneBtns.forEach(function (b) { b.addEventListener('click', function () { setScene(b.getAttribute('data-scene'), true); }); });
+  var savedScene = 'palco';
+  try { savedScene = localStorage.getItem(SCENE_KEY) || 'palco'; } catch (e) {}
+  setScene(savedScene, false);
+
+  var MODEL_KEY = 'caixa-de-som:modelo';
+  var modelBtns = Array.prototype.slice.call(document.querySelectorAll('#models [data-model]'));
+  function setModel(id, save, useDefaults) {
+    if (!MODELS[id]) id = 'classica';
+    model = id;
+    var M = MODELS[id];
+    modelBtns.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-model') === id ? 'true' : 'false'); });
+    cv.setAttribute('aria-label', 'Caixa de som modelo ' + M.name + ', vista de três quartos, com os alto-falantes se movendo conforme a música');
+    if (useDefaults) { Object.keys(M.defaults).forEach(function (k) { cfg[k] = M.defaults[k]; }); applyCustom(true); }
+    else placeRadioHit();
+    if (save) { try { localStorage.setItem(MODEL_KEY, id); } catch (e) {} }
+  }
+  modelBtns.forEach(function (b) { b.addEventListener('click', function () { setModel(b.getAttribute('data-model'), true, true); }); });
+  var savedModel = 'classica';
+  try { savedModel = localStorage.getItem(MODEL_KEY) || 'classica'; } catch (e) {}
+  setModel(savedModel, false, false);
+
+  /* ---------- estilos salvos (caixa + cores + LED + cordinha) ---------- */
+  var SAVE_KEY = 'caixa-de-som:salvos', saves = [];
+  function loadSaves() {
+    try { var a = JSON.parse(localStorage.getItem(SAVE_KEY) || '[]'); if (Array.isArray(a)) return a.filter(function (x) { return x && typeof x.name === 'string' && MODELS[x.model] && x.cfg; }).slice(0, 24); } catch (e) {}
+    return [];
+  }
+  function persistSaves() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(saves)); } catch (e) {} }
+  function svMsg(t) { var m = $('svMsg'); m.textContent = t; clearTimeout(svMsg.t); svMsg.t = setTimeout(function () { m.textContent = ''; }, 3000); }
+  function renderSaves() {
+    var box = $('svList'); while (box.firstChild) box.removeChild(box.firstChild);
+    if (!saves.length) { box.appendChild(el('p', { cls: 'muted', text: 'Você ainda não salvou nenhum estilo.' })); return; }
+    saves.forEach(function (sv, i) {
+      var c = sv.cfg, sw = el('div', { cls: 'sw2' }, [c.body, c.frame, c.glow, c.shell, c.cord].map(function (col) { return el('i', { style: 'background:' + (/^#[0-9a-f]{6}$/i.test(col) ? col : '#888') }); }));
+      box.appendChild(el('div', { cls: 'sv' }, [
+        el('b', { text: sv.name }), el('small', { text: MODELS[sv.model].name }), sw,
+        el('div', { cls: 'row' }, [
+          el('button', { cls: 'btn', type: 'button', text: 'Usar', onclick: function () { useSave(i); } }),
+          el('button', { cls: 'btn', type: 'button', text: 'Atualizar', 'aria-label': 'Atualizar o estilo ' + sv.name + ' com a caixa atual', onclick: function () { saves[i] = { name: sv.name, model: model, cfg: Object.assign({}, cfg) }; persistSaves(); renderSaves(); svMsg('Estilo "' + sv.name + '" atualizado.'); } }),
+          el('button', { cls: 'btn', type: 'button', text: 'Apagar', 'aria-label': 'Apagar o estilo ' + sv.name, onclick: function () { saves.splice(i, 1); persistSaves(); renderSaves(); svMsg('Estilo apagado.'); } })
+        ])
+      ]));
+    });
+  }
+  function useSave(i) {
+    var sv = saves[i]; if (!sv) return;
+    setModel(sv.model, true, false);
+    var o = Object.assign({}, DEFAULTS), k;
+    for (k in DEFAULTS) if (sv.cfg[k] !== undefined && typeof sv.cfg[k] === typeof DEFAULTS[k]) o[k] = sv.cfg[k];
+    cfg = o; applyCustom(true);
+    svMsg('Estilo "' + sv.name + '" aplicado.');
+  }
+  $('svForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var nm = $('svName').value.trim() || (MODELS[model].name + ' ' + (saves.length + 1));
+    var at = -1; saves.forEach(function (x, i) { if (x.name.toLowerCase() === nm.toLowerCase()) at = i; });
+    var entry = { name: nm, model: model, cfg: Object.assign({}, cfg) };
+    if (at >= 0) saves[at] = entry; else { if (saves.length >= 24) { svMsg('Limite de 24 estilos. Apague algum para salvar outro.'); return; } saves.unshift(entry); }
+    persistSaves(); renderSaves(); $('svName').value = '';
+    svMsg(at >= 0 ? 'Estilo "' + nm + '" atualizado.' : 'Estilo "' + nm + '" salvo.');
+  });
+  saves = loadSaves(); renderSaves();
+
+  /* ---------- rádio e pendrives ---------- */
+  var rdModal = $('rdModal'), rdHit = $('rdHit'), rdKnob = $('rdKnob'), rdBig = $('rdBig'), rdTime = $('rdTime');
+  var rdTrack = $('rdTrack'), rdTrackT = $('rdTrackT'), rdSpec = $('rdSpec'), rdMenu = $('rdMenu'), rdUsb = $('rdUsb'), rdStick = $('rdStick');
+  var tg = { usb: $('tgUsb'), int: $('tgInt'), rpt: $('tgRpt'), rdm: $('tgRdm'), eq: $('tgEq'), mute: $('tgMute') };
+  var specG = rdSpec.getContext('2d');
+  var rdOpen = false, rdCache = {};
+  var pens = [], penDb = null, penPersist = true, penTarget = null;
+  var BASS_STEPS = [0, 9, 15];
+
+  function pad(n, w) { var t = String(n); while (t.length < w) t = '0' + t; return t; }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function safeColor(c) { return /^#[0-9a-f]{6}$/i.test(c) ? c : '#e0603f'; }
+  function fmtSize(b) { return b >= 1073741824 ? (b / 1073741824).toFixed(b % 1073741824 ? 1 : 0).replace('.', ',') + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      var v = attrs[k];
+      if (k === 'text') n.textContent = v;
+      else if (k === 'cls') n.className = v;
+      else if (k === 'style') n.style.cssText = v;
+      else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    });
+    (kids || []).forEach(function (c) { if (c) n.appendChild(c); });
+    return n;
+  }
+  function setPenMsg(t) { $('penMsg').textContent = t; }
+
+  /* --- visor --- */
+  function lcdMsg(text, ms) { rd.msg = text; rd.msgUntil = performance.now() + ms; renderRadio(); }
+  function setT(node, key, txt) { if (rdCache[key] !== txt) { rdCache[key] = txt; node.textContent = txt; return true; } return false; }
+  function renderRadio() {
+    if (!rdKnob) return;
+    var now = performance.now(), usb = !!rd.pen && rd.source === 'usb', big, small = '';
+    var f = usb ? rd.pen.files[rd.idx] : null;
+    if (rd.msg && now < rd.msgUntil) big = rd.msg;
+    else if (usb) big = f ? 'USB ' + pad(rd.idx + 1, 3) : 'NO FILE';
+    else if (rd.source === 'aux') big = 'AUX';
+    else big = 'FM 87.5';
+    if (usb) small = f ? f.name : '';
+    else if (rd.source === 'aux') small = label || '';
+    else small = rd.pen ? '' : 'NO USB';
+    setT(rdBig, 'big', big);
+    if (setT(rdTrackT, 'small', small)) {
+      rdTrack.classList.remove('scroll');
+      if (!rdModal.hidden && rdTrackT.offsetWidth > rdTrack.clientWidth) rdTrack.classList.add('scroll');
+    }
+    tg.usb.classList.toggle('on', !!rd.pen);
+    tg.int.classList.toggle('on', rd.intro);
+    tg.rpt.classList.toggle('on', rd.rpt);
+    tg.rdm.classList.toggle('on', rd.rdm);
+    tg.mute.classList.toggle('on', muted);
+    setT(tg.eq, 'eq', bassDb > 0 ? 'BASS +' + bassDb : 'FLAT');
+    tg.eq.classList.toggle('on', bassDb > 0);
+    rdStick.hidden = !rd.pen;
+    if (rd.pen) rdStick.style.background = safeColor(rd.pen.color);
+  }
+  function syncKnob() {
+    if (!rdKnob) return;
+    rdKnob.style.transform = 'rotate(' + (-135 + (muted ? 0 : vol) * 270).toFixed(1) + 'deg)';
+    rdKnob.setAttribute('aria-valuenow', String(Math.round(vol * 40)));
+  }
+  function drawSpec() {
+    var w = rdSpec.width, h = rdSpec.height, n = 32, bw = w / n, i, v, bi, bh;
+    specG.clearRect(0, 0, w, h);
+    specG.fillStyle = '#f1f4f8';
+    for (i = 0; i < n; i++) {
+      if (playing && analyser && rd.source !== 'fm') { bi = 2 + Math.floor(Math.pow(i / n, 1.8) * 220); v = Math.pow(freq[bi] / 255, 1.4); }
+      else v = 0.05 + 0.03 * ((i * 7) % 5) / 5;
+      bh = Math.max(2, v * h);
+      specG.fillRect(i * bw + 1, h - bh, bw - 2, bh);
+    }
+  }
+  function radioTick() {
+    renderRadio();
+    setT(rdTime, 'time', (buffer && rd.source !== 'fm') ? fmt(position()) : '');
+    drawSpec();
+  }
+
+  /* --- abrir e fechar --- */
+  function placeRadioHit() {
+    if (!rdHit) return;
+    var V = VIEWS[scene] || VIEWS.palco, M = MODELS[model] || MODELS.classica, hd = M.head;
+    if (!hd || !cfg.head) { rdHit.hidden = true; return; }
+    YO = M.H / 2 - FLOOR;
+    var hz = hd.z || 0, pts = [P(hd.x0, hd.y1, hz), P(hd.x1, hd.y1, hz), P(hd.x1, hd.y0, hz), P(hd.x0, hd.y0, hz)];
+    YO = 0;
+    var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    pts.forEach(function (p) {
+      var qx = M.pv[0] + (p[0] - M.pv[0]) * M.s, qy = M.pv[1] + (p[1] - M.pv[1]) * M.s;
+      x0 = Math.min(x0, qx); x1 = Math.max(x1, qx); y0 = Math.min(y0, qy); y1 = Math.max(y1, qy);
+    });
+    function X(x) { return (x * V.sc + V.tx) / VW * 100; }
+    function Y(y) { return (y * V.sc + V.ty) / VH * 100; }
+    rdHit.style.left = X(x0) + '%'; rdHit.style.top = Y(y0) + '%';
+    rdHit.style.width = (X(x1) - X(x0)) + '%'; rdHit.style.height = (Y(y1) - Y(y0)) + '%';
+    rdHit.hidden = false;
+  }
+  function openRadio() {
+    ensureAudio();
+    rdOpen = true; rdModal.hidden = false; rdMenu.hidden = true;
+    document.querySelector('.wrap').inert = true;
+    rdCache = {}; syncKnob(); renderRadio();
+    try { rdKnob.focus({ preventScroll: true }); } catch (e) {}
+  }
+  function closeRadio() {
+    rdOpen = false; rdModal.hidden = true; rdMenu.hidden = true;
+    document.querySelector('.wrap').inert = false;
+    try { rdHit.focus({ preventScroll: true }); } catch (e) {}
+  }
+  rdHit.addEventListener('click', openRadio);
+  $('radioBtn').addEventListener('click', openRadio);
+  $('rdClose').addEventListener('click', closeRadio);
+  rdModal.addEventListener('pointerdown', function (e) {
+    if (e.target === rdModal) closeRadio();
+    else if (!rdMenu.hidden && !rdMenu.contains(e.target) && !rdUsb.contains(e.target)) rdMenu.hidden = true;
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !rdOpen) return;
+    if (!rdMenu.hidden) rdMenu.hidden = true; else closeRadio();
+  });
+
+  /* --- botão giratório (volume) --- */
+  function knobTo(v, show) {
+    vol = clamp(0, 1, v); muted = false;
+    $('vol').value = vol;
+    applyVol();
+    if (show) lcdMsg('VOL ' + Math.round(vol * 40), 1300);
+  }
+  var kDrag = null;
+  rdKnob.addEventListener('pointerdown', function (e) {
+    try { rdKnob.setPointerCapture(e.pointerId); } catch (x) {}
+    var r = rdKnob.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    kDrag = { cx: cx, cy: cy, a: Math.atan2(e.clientY - cy, e.clientX - cx) };
+  });
+  rdKnob.addEventListener('pointermove', function (e) {
+    if (!kDrag) return;
+    var a = Math.atan2(e.clientY - kDrag.cy, e.clientX - kDrag.cx), d = a - kDrag.a;
+    if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
+    kDrag.a = a;
+    knobTo(vol + d / (1.5 * Math.PI), true);
+  });
+  ['pointerup', 'pointercancel'].forEach(function (n) { rdKnob.addEventListener(n, function () { kDrag = null; }); });
+  rdKnob.addEventListener('wheel', function (e) { e.preventDefault(); knobTo(vol + (e.deltaY < 0 ? 1 : -1) / 40, true); }, { passive: false });
+  rdKnob.addEventListener('keydown', function (e) {
+    var d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 5, PageDown: -5 }[e.key];
+    if (d) { e.preventDefault(); knobTo(vol + d / 40, true); }
+    else if (e.key === 'Home') { e.preventDefault(); knobTo(0, true); }
+    else if (e.key === 'End') { e.preventDefault(); knobTo(1, true); }
+  });
+
+  /* --- faixas --- */
+  function nextIdx(d) {
+    var files = rd.pen.files, n = files.length, j = rd.idx, k;
+    if (Math.abs(d) !== 1) return ((j + d) % n + n) % n;
+    for (k = 0; k < n; k++) {
+      if (rd.rdm && n > 1) { do { j = Math.floor(Math.random() * n); } while (j === rd.idx); }
+      else j = ((j + d) % n + n) % n;
+      if (!files[j].bad) return j;
+    }
+    return rd.idx;
+  }
+  function step(d) {
+    if (!rd.pen || !rd.pen.files.length) { lcdMsg(rd.pen ? 'NO FILE' : 'NO USB', 1500); return; }
+    playTrack(nextIdx(d));
+  }
+  function playTrack(i) {
+    var pen = rd.pen;
+    if (!pen || !pen.files.length) { lcdMsg(pen ? 'NO FILE' : 'NO USB', 1500); return; }
+    if (!ensureAudio()) { setStatus('Este navegador não tem suporte a áudio.'); return; }
+    var n = pen.files.length; i = ((i % n) + n) % n;
+    var f = pen.files[i], tok = ++rd.tok;
+    rd.idx = i; rd.source = 'usb'; rd.busy = true;
+    lcdMsg('LOADING', 20000);
+    setStatus('Carregando ' + f.name + '…');
+    renderPens();
+    f.blob.arrayBuffer().then(function (ab) {
+      return new Promise(function (res, rej) { ac.decodeAudioData(ab, res, rej); });
+    }).then(function (b) {
+      if (tok !== rd.tok) return;
+      rd.busy = false; rd.msg = ''; f.dur = b.duration; f.bad = false;
+      setTrack(b, rd.rpt, f.name, true);
+      renderPens(); renderRadio();
+    }).catch(function () {
+      if (tok !== rd.tok) return;
+      rd.busy = false; f.bad = true;
+      lcdMsg('ERROR', 1400);
+      setStatus('Não consegui abrir ' + f.name + '. Pulando para a próxima.');
+      renderPens();
+      if (pen.files.some(function (x) { return !x.bad; })) setTimeout(function () { if (tok === rd.tok) step(1); }, 700);
+    });
+  }
+  function onEnded() {
+    if (rd.pen && rd.source === 'usb' && rd.pen.files.length) step(1); else updateUI();
+  }
+
+  /* --- ligar e tirar o pendrive --- */
+  function connectPen(id) {
+    var p = pens.filter(function (x) { return x.id === id; })[0];
+    if (!p) return;
+    if (!ensureAudio()) { setStatus('Este navegador não tem suporte a áudio.'); return; }
+    rd.pen = p; rd.idx = 0; rd.source = 'usb'; rd.tok++; rd.busy = false;
+    p.files.forEach(function (f) { f.bad = false; });
+    renderPens();
+    if (!p.files.length) { stopSource(); playing = false; offset = 0; buffer = null; label = ''; updateUI(); setStatus('Pendrive "' + p.name + '" ligado, mas está vazio.'); lcdMsg('NO FILE', 2000); return; }
+    setPenMsg(p.files.length + (p.files.length === 1 ? ' música carregada' : ' músicas carregadas') + ' de "' + p.name + '".');
+    playTrack(0);
+  }
+  function ejectPen() {
+    rd.tok++; rd.busy = false;
+    if (rd.source === 'usb') { stopSource(); playing = false; offset = 0; buffer = null; label = ''; rd.source = 'fm'; updateUI(); setStatus('Pendrive removido.'); }
+    rd.pen = null; rdMenu.hidden = true;
+    renderPens(); lcdMsg('USB OUT', 1300);
+  }
+  function buildMenu() {
+    rdMenu.textContent = '';
+    if (!pens.length) {
+      rdMenu.appendChild(el('p', { text: 'Você ainda não criou nenhum pendrive.' }));
+      rdMenu.appendChild(el('button', { type: 'button', cls: 'btn sm', text: 'Criar pendrive', onclick: function () {
+        closeRadio();
+        var n = $('penName');
+        n.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+        n.focus({ preventScroll: true });
+      } }));
+      return;
+    }
+    rdMenu.appendChild(el('p', { text: 'Ligar pendrive:' }));
+    pens.forEach(function (p) {
+      rdMenu.appendChild(el('button', { type: 'button', cls: 'rd-mi', onclick: function () { rdMenu.hidden = true; connectPen(p.id); } }, [
+        el('span', { cls: 'dot', style: 'background:' + safeColor(p.color) }),
+        el('span', { text: p.name + ' · ' + p.files.length + (p.files.length === 1 ? ' música' : ' músicas') })
+      ]));
+    });
+  }
+  rdUsb.addEventListener('click', function () {
+    if (rd.pen) { ejectPen(); return; }
+    buildMenu(); rdMenu.hidden = !rdMenu.hidden;
+  });
+
+  /* --- botões do rádio --- */
+  var ACT = {
+    prev: function () { if (rd.pen && rd.source === 'usb' && buffer && position() > 3) playTrack(rd.idx); else step(-1); },
+    next: function () { step(1); },
+    play: function () {
+      if (rd.source === 'fm') {
+        if (rd.pen && rd.pen.files.length) { rd.source = 'usb'; playTrack(rd.idx); } else lcdMsg(rd.pen ? 'NO FILE' : 'NO USB', 1500);
+        return;
+      }
+      if (!buffer) { if (rd.pen) playTrack(rd.idx); else lcdMsg('NO USB', 1500); return; }
+      if (playing) pause(); else play();
+      updateUI();
+    },
+    mod: function () {
+      if (rd.source === 'fm') {
+        if (rd.pen && rd.pen.files.length) { rd.source = 'usb'; playTrack(rd.idx); }
+        else if (buffer) { rd.source = 'aux'; updateUI(); lcdMsg('AUX', 1200); }
+        else lcdMsg('NO USB', 1500);
+      } else {
+        if (playing) pause();
+        rd.source = 'fm'; updateUI(); lcdMsg('FM 87.5', 1000);
+      }
+    },
+    mute: function () { muted = !muted; applyVol(); lcdMsg(muted ? 'MUTE' : 'MUTE OFF', 1200); },
+    clk: function () { var d = new Date(); lcdMsg(pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2), 4000); },
+    bnd: function () {
+      var nx = BASS_STEPS.filter(function (g) { return g > bassDb; })[0];
+      setBass(nx === undefined ? 0 : nx);
+      lcdMsg(bassDb > 0 ? 'BASS +' + bassDb : 'FLAT', 1500);
+    },
+    rst: function () {
+      rd.intro = false; rd.rpt = false; rd.rdm = false; loop = false;
+      if (src) src.loop = false;
+      setBass(0);
+      if (buffer && rd.source !== 'fm') { var was = playing; offset = 0; if (was) play(); }
+      lcdMsg('RESET', 1300);
+    },
+    int: function () { rd.intro = !rd.intro; if (rd.intro) { rd.rpt = false; loop = false; if (src) src.loop = false; } lcdMsg(rd.intro ? 'INT ON' : 'INT OFF', 1200); },
+    rpt: function () { rd.rpt = !rd.rpt; if (rd.rpt) rd.intro = false; loop = rd.rpt; if (src) src.loop = rd.rpt; lcdMsg(rd.rpt ? 'RPT ON' : 'RPT OFF', 1200); },
+    rdm: function () { rd.rdm = !rd.rdm; lcdMsg(rd.rdm ? 'RDM ON' : 'RDM OFF', 1200); },
+    m10: function () { if (rd.pen && rd.pen.files.length) playTrack(nextIdx(-10)); else lcdMsg('NO USB', 1500); },
+    p10: function () { if (rd.pen && rd.pen.files.length) playTrack(nextIdx(10)); else lcdMsg('NO USB', 1500); }
+  };
+  Array.prototype.forEach.call(rdModal.querySelectorAll('[data-act]'), function (b) {
+    b.addEventListener('click', function () { ensureAudio(); ACT[b.getAttribute('data-act')](); });
+  });
+
+  /* --- armazenamento dos pendrives (IndexedDB, quando o navegador deixa) --- */
+  function dbRecord(p) {
+    return { id: p.id, name: p.name, color: p.color, cap: p.cap, files: p.files.map(function (f) { return { id: f.id, name: f.name, size: f.size, type: f.type, blob: f.blob }; }) };
+  }
+  function dbFail() { if (penPersist) { penPersist = false; setPenMsg('Neste navegador os pendrives não ficam salvos: valem só enquanto a página está aberta.'); } }
+  function dbSave(p) {
+    if (!penDb) return;
+    try { var tx = penDb.transaction('pens', 'readwrite'); tx.objectStore('pens').put(dbRecord(p)); tx.onerror = dbFail; tx.onabort = dbFail; } catch (e) { dbFail(); }
+  }
+  function dbDelete(id) {
+    if (!penDb) return;
+    try { penDb.transaction('pens', 'readwrite').objectStore('pens').delete(id); } catch (e) {}
+  }
+  function dbInit() {
+    try {
+      var rq = indexedDB.open('caixa-de-som', 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore('pens', { keyPath: 'id' }); };
+      rq.onsuccess = function () {
+        penDb = rq.result;
+        try {
+          var all = penDb.transaction('pens').objectStore('pens').getAll();
+          all.onsuccess = function () {
+            (all.result || []).forEach(function (r) {
+              if (!pens.some(function (x) { return x.id === r.id; })) pens.push(r);
+            });
+            renderPens();
+          };
+        } catch (e) { dbFail(); }
+      };
+      rq.onerror = rq.onblocked = dbFail;
+    } catch (e) { dbFail(); }
+  }
+
+  /* --- criar pendrives, adicionar e remover músicas --- */
+  function used(p) { return p.files.reduce(function (s, f) { return s + f.size; }, 0); }
+  function isAudio(f) { return /^audio\//.test(f.type) || /\.(mp3|wav|ogg|m4a|flac|aac|opus|weba)$/i.test(f.name); }
+  function addFiles(pen, list) {
+    var added = 0, full = 0, other = 0;
+    Array.prototype.forEach.call(list || [], function (f) {
+      if (!isAudio(f)) { other++; return; }
+      if (used(pen) + f.size > pen.cap) { full++; return; }
+      pen.files.push({ id: uid(), name: f.name, size: f.size, type: f.type, blob: f });
+      added++;
+    });
+    if (added) dbSave(pen);
+    var msg = added ? added + (added === 1 ? ' música adicionada' : ' músicas adicionadas') + ' em "' + pen.name + '".' : 'Nenhuma música adicionada.';
+    if (full) msg += ' ' + full + (full === 1 ? ' arquivo não coube' : ' arquivos não couberam') + ' no pendrive.';
+    if (other) msg += ' ' + other + (other === 1 ? ' arquivo não é áudio.' : ' arquivos não são áudio.');
+    setPenMsg(msg);
+    renderPens(); renderRadio();
+  }
+  function removeFile(pen, i) {
+    pen.files.splice(i, 1);
+    dbSave(pen);
+    if (rd.pen === pen) {
+      var wasCurrent = i === rd.idx;
+      if (i < rd.idx) rd.idx--;
+      if (rd.idx >= pen.files.length) rd.idx = 0;
+      if (wasCurrent && rd.source === 'usb') {
+        if (pen.files.length) { playTrack(rd.idx); }
+        else { rd.tok++; rd.busy = false; stopSource(); playing = false; offset = 0; buffer = null; label = ''; updateUI(); setStatus('O pendrive ficou vazio.'); }
+      }
+    }
+    renderPens(); renderRadio();
+  }
+  function deletePen(pen) {
+    if (rd.pen === pen) ejectPen();
+    pens.splice(pens.indexOf(pen), 1);
+    dbDelete(pen.id);
+    setPenMsg('Pendrive "' + pen.name + '" apagado.');
+    renderPens();
+  }
+  function stickSvg(color) {
+    return '<svg viewBox="0 0 120 44" width="96" height="35" aria-hidden="true" focusable="false"><rect x="30" y="6" width="84" height="32" rx="10" fill="' + safeColor(color) + '"/><rect x="2" y="12" width="34" height="20" rx="2" fill="#aeb6c1" stroke="#7b8490"/><rect x="10" y="18" width="6" height="8" fill="#3a3f48"/><rect x="20" y="18" width="6" height="8" fill="#3a3f48"/><rect x="40" y="10" width="44" height="6" rx="3" fill="#ffffff" fill-opacity=".28"/><circle cx="100" cy="22" r="5" fill="#000000" fill-opacity=".35"/></svg>';
+  }
+  function renderPens() {
+    var box = $('penList');
+    box.textContent = '';
+    if (!pens.length) { box.appendChild(el('p', { cls: 'empty', text: 'Nenhum pendrive ainda. Crie o primeiro acima.' })); return; }
+    pens.forEach(function (p) {
+      var live = rd.pen === p, u = used(p), pct = Math.min(100, u / p.cap * 100);
+      var icon = el('span', { 'aria-hidden': 'true' }); icon.innerHTML = stickSvg(p.color);
+      var list = el('ol', { cls: 'tracks' });
+      p.files.forEach(function (f, i) {
+        var cur = live && rd.source === 'usb' && rd.idx === i;
+        var nm = el('button', { type: 'button', cls: 'tr-name', text: (f.bad ? '⚠ ' : '') + f.name + '  ·  ' + fmtSize(f.size), 'aria-current': cur ? 'true' : 'false', title: live ? 'Tocar' : 'Ligue o pendrive no rádio para tocar', onclick: function () { playTrack(i); } });
+        if (!live) nm.disabled = true;
+        list.appendChild(el('li', {}, [nm, el('button', { type: 'button', cls: 'tr-x', text: '×', 'aria-label': 'Remover ' + f.name, onclick: function () { removeFile(p, i); } })]));
+      });
+      var card = el('div', { cls: 'pen' + (live ? ' live' : '') }, [
+        el('div', { cls: 'pen-top' }, [icon, el('div', {}, [
+          el('div', { cls: 'pen-name', text: p.name }),
+          el('div', { cls: 'pen-meta', text: p.files.length + (p.files.length === 1 ? ' música' : ' músicas') + ' · ' + fmtSize(u) + ' de ' + fmtSize(p.cap) + (live ? ' · ligado no rádio' : '') })
+        ])]),
+        el('div', { cls: 'bar' }, [el('i', { style: 'width:' + pct.toFixed(1) + '%' })]),
+        el('div', { cls: 'pen-actions' }, [
+          el('button', { type: 'button', cls: 'btn sm', text: 'Adicionar músicas', onclick: function () { penTarget = p; $('penFile').click(); } }),
+          el('button', { type: 'button', cls: 'btn sm primary', text: live ? 'Tirar do rádio' : 'Ligar no rádio', onclick: function () { if (live) ejectPen(); else connectPen(p.id); } }),
+          el('button', { type: 'button', cls: 'btn sm', text: 'Apagar', onclick: function () { deletePen(p); } })
+        ]),
+        p.files.length ? list : el('p', { cls: 'empty', text: 'Vazio. Adicione músicas ou solte arquivos de áudio aqui.' })
+      ]);
+      ['dragenter', 'dragover'].forEach(function (n) { card.addEventListener(n, function (e) { e.preventDefault(); card.classList.add('over'); }); });
+      card.addEventListener('dragleave', function () { card.classList.remove('over'); });
+      card.addEventListener('drop', function (e) { e.preventDefault(); card.classList.remove('over'); addFiles(p, e.dataTransfer && e.dataTransfer.files); });
+      box.appendChild(card);
+    });
+  }
+  $('penFile').addEventListener('change', function (e) {
+    if (penTarget) addFiles(penTarget, e.target.files);
+    e.target.value = ''; penTarget = null;
+  });
+  $('penForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (pens.length >= 8) { setPenMsg('Limite de 8 pendrives. Apague um para criar outro.'); return; }
+    var name = $('penName').value.trim() || 'Pendrive ' + (pens.length + 1);
+    var p = { id: uid(), name: name, color: safeColor($('penColor').value), cap: (+$('penCap').value) * 1048576, files: [] };
+    pens.push(p); dbSave(p);
+    $('penName').value = '';
+    setPenMsg('Pendrive "' + p.name + '" criado. Agora adicione músicas.');
+    renderPens();
+  });
+
+  dbInit();
+  renderPens();
+  syncKnob();
+  placeRadioHit();
+
+  /* ---------- animação ---------- */
+  var env = { bass: 0, mid: 0, treble: 0 }, peak = { bass: 0.12, mid: 0.12, treble: 0.12 };
+  var phase = 0, last = performance.now(), cordT = 0, ledCol = '';
+
+  function band(f1, f2) {
+    var bw = ac.sampleRate / analyser.fftSize;
+    var i1 = Math.max(1, Math.round(f1 / bw)), i2 = Math.max(i1, Math.round(f2 / bw)), sum = 0;
+    for (var i = i1; i <= i2; i++) sum += freq[i];
+    return Math.pow(sum / ((i2 - i1 + 1) * 255), 3);
+  }
+  function clamp(a, b, v) { return Math.max(a, Math.min(b, v)); }
+
+  function frame(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    var bt = 0, mt = 0, tt = 0;
+    if (playing && analyser) {
+      analyser.getByteFrequencyData(freq);
+      var b = band(30, 180), m = band(200, 2000), h = band(3000, 9000);
+      peak.bass = Math.max(b, peak.bass * 0.997);
+      peak.mid = Math.max(m, peak.mid * 0.997);
+      peak.treble = Math.max(h, peak.treble * 0.997);
+      bt = Math.min(1, b / Math.max(peak.bass, 0.12));
+      mt = Math.min(1, m / Math.max(peak.mid, 0.12));
+      tt = Math.min(1, h / Math.max(peak.treble, 0.12));
+    }
+    env.bass += (bt - env.bass) * (bt > env.bass ? 0.7 : 0.2);
+    env.mid += (mt - env.mid) * (mt > env.mid ? 0.6 : 0.22);
+    env.treble += (tt - env.treble) * (tt > env.treble ? 0.7 : 0.25);
+    phase += dt * Math.PI * 2 * 11;
+
+    var k = 1 + bassDb / 36;   // com mais grave, o cone anda mais
+    var dx = clamp(-14, 40, 20 * mov * k * env.bass * (0.35 + 0.65 * Math.sin(phase)));
+    var dm = clamp(-4, 9, 8 * mov * env.mid * (0.35 + 0.65 * Math.sin(phase * 1.7 + 1)));
+    var tdx = 4 * env.treble * Math.sin(phase * 4);
+    var shx = reduce ? 0 : env.bass * mov * k * 1.6 * Math.sin(phase * 1.3);
+    var shy = reduce ? 0 : env.bass * mov * k * 0.8 * Math.sin(phase * 0.9 + 1);
+
+    if (buffer && !seeking) {
+      var p = position();
+      seek.value = Math.round(p / buffer.duration * 1000);
+      timeEl.textContent = fmt(p) + ' / ' + fmt(buffer.duration);
+    }
+    if (rd.intro && playing && !rd.busy && rd.source === 'usb' && position() > 10) step(1);
+    if (rdOpen) radioTick();
+    cordT += dt;
+    var ca = reduce ? 0 : 3 * Math.sin(cordT * 1.4) + env.bass * mov * k * 6 * Math.sin(phase * 0.55);
+    cordG.setAttribute('transform', 'rotate(' + ca.toFixed(2) + ' 100 318)');
+    var lc = muted ? '#e5654f' : (playing ? C.accent : '#c9ccd1');
+    if (lc !== ledCol) { ledCol = lc; rcLed.setAttribute('fill', lc); }
+    rcLed.setAttribute('opacity', playing && !muted ? (0.6 + 0.4 * env.bass).toFixed(2) : '1');
+    draw(dx, dm, tdx, shx, shy);
+    requestAnimationFrame(frame);
+  }
+  draw(0, 0, 0, 0, 0);
+  requestAnimationFrame(frame);
+})();
+</script>
+
+
+</body>
+</html>
